@@ -662,19 +662,21 @@ if 'results' in st.session_state:
     rows_2 = []
     for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
         rows_2.append({
-            'Stint 1': comp[0][0].upper(),
-            'Pit Lap 1': pit1,
-            'Stint 2': comp[1][0].upper(),
-            'Pit Lap 2': pit2,
+            'Stop 1': f"{comp[0][0].upper()} → Lap {pit1}",
+            'Stop 2': f"{comp[1][0].upper()} → Lap {pit2}",
             'Stint 3': comp[2][0].upper(),
             'Frequency': freq,
             'Win Rate': f"{freq/n_simulations*100:.1f}%"
         })
+        
+    df = pd.DataFrame(rows_2)
+    df.index = range(1, len(df)+1)
+    df.index.name = 'Rank'
 
     if mobile_mode:
         st.write("**Top 10 2-Stop Strategies**")
-        st.dataframe(pd.DataFrame(rows_2), use_container_width=True)
+        st.dataframe(df, use_container_width=True)
     else:
         with col2:
             st.write("**Top 10 2-Stop Strategies**")
-            st.dataframe(pd.DataFrame(rows_2), use_container_width=True)
+            st.dataframe(df, use_container_width=True)

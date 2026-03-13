@@ -22,6 +22,7 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from monte_carlo_medium_v1 import simulate_race, run_simulation, generate_safety_cars
 from track_presets import TRACK_PRESETS
 
@@ -597,81 +598,6 @@ if 'results' in st.session_state:
             ax.set_title(f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
-            
-    # build 2D arrays: rows = compounds, cols = pit laps
-    compound_order = ['soft', 'medium', 'hard']
-    lap_bins = range(1, config['total_laps'])
-
-    # first stop heatmap
-    heatmap_pit1 = np.zeros((3, config['total_laps']-1))
-    for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop):
-        row = compound_order.index(c[0])
-        heatmap_pit1[row, p-1] += 1
-
-    # second stop heatmap
-    heatmap_pit2 = np.zeros((3, config['total_laps']-1))
-    for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop):
-        row = compound_order.index(c[1])
-        heatmap_pit2[row, p-1] += 1
-        
-    if mobile_mode:
-        st.subheader("2-Stop Strategy Bubble Chart")
-        
-        fig, (ax1, ax2) = plt.subplots(2, 1, dpi=plot_dpi, figsize=(6, 6))
-        
-        for comp, color, row in zip(['soft', 'medium', 'hard'], ['red', 'gold', 'gray'], [0, 1, 2]):
-            # first stop
-            laps = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == comp]
-            counts = Counter(laps)
-            ax1.scatter(list(counts.keys()), [row]*len(counts),
-                    s=[v*5 for v in counts.values()],
-                    color=color, alpha=0.7, label=comp[0].upper())
-            
-            # second stop
-            laps = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == comp]
-            counts = Counter(laps)
-            ax2.scatter(list(counts.keys()), [row]*len(counts),
-                    s=[v*5 for v in counts.values()],
-                    color=color, alpha=0.7, label=comp[0].upper())
-        
-        for ax, title in zip([ax1, ax2], ['First Stop', 'Second Stop']):
-            ax.set_yticks([0, 1, 2])
-            ax.set_yticklabels(['S', 'M', 'H'])
-            ax.set_xlabel("Pit Lap")
-            ax.set_title(title)
-            ax.legend()
-            ax.set_xlim(0, config['total_laps'])
-        
-        plt.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
-    else:
-        st.subheader("2-Stop Strategy Bubble Chart")
-        col1, col2 = st.columns(2)
-        
-        for col, stop_idx, pit_laps_list, title in zip(
-            [col1, col2],
-            [0, 1],
-            [optimal_laps_2_stop_pit1, optimal_laps_2_stop_pit2],
-            ['First Stop', 'Second Stop']
-        ):
-            with col:
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                for comp, color, row in zip(['soft', 'medium', 'hard'], ['red', 'gold', 'gray'], [0, 1, 2]):
-                    laps = [p for p, c in zip(pit_laps_list, optimal_compounds_2_stop) if c[stop_idx] == comp]
-                    counts = Counter(laps)
-                    ax.scatter(list(counts.keys()), [row]*len(counts),
-                            s=[v*5 for v in counts.values()],
-                            color=color, alpha=0.7, label=comp[0].upper())
-                ax.set_yticks([0, 1, 2])
-                ax.set_yticklabels(['S', 'M', 'H'])
-                ax.set_xlabel("Pit Lap")
-                ax.set_title(title)
-                ax.set_xlim(0, config['total_laps'])
-                ax.legend()
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
 
     # =========================================================================
     # LAP TRACES
@@ -704,3 +630,51 @@ if 'results' in st.session_state:
             fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
+
+    st.subheader("Strategy Tables")
+
+    # --- 1-stop table ---
+    compound_counts_1 = Counter(optimal_compounds_1_stop)
+    pit_lap_counts_1  = Counter(zip(optimal_laps_1_stop, optimal_compounds_1_stop))
+
+    rows_1 = []
+    for (pit, comp), freq in pit_lap_counts_1.most_common(10):
+        rows_1.append({
+            'Stint 1': comp[0][0].upper(),
+            'Pit Lap': pit,
+            'Stint 2': comp[1][0].upper(),
+            'Frequency': freq,
+            'Win Rate': f"{freq/n_simulations*100:.1f}%"
+        })
+
+    if mobile_mode:
+        st.write("**Top 10 1-Stop Strategies**")
+        st.dataframe(pd.DataFrame(rows_1), use_container_width=True)
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Top 10 1-Stop Strategies**")
+            st.dataframe(pd.DataFrame(rows_1), use_container_width=True)
+
+    # --- 2-stop table ---
+    pit_lap_counts_2 = Counter(zip(optimal_laps_2_stop_pit1, optimal_laps_2_stop_pit2, optimal_compounds_2_stop))
+
+    rows_2 = []
+    for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
+        rows_2.append({
+            'Stint 1': comp[0][0].upper(),
+            'Pit Lap 1': pit1,
+            'Stint 2': comp[1][0].upper(),
+            'Pit Lap 2': pit2,
+            'Stint 3': comp[2][0].upper(),
+            'Frequency': freq,
+            'Win Rate': f"{freq/n_simulations*100:.1f}%"
+        })
+
+    if mobile_mode:
+        st.write("**Top 10 2-Stop Strategies**")
+        st.dataframe(pd.DataFrame(rows_2), use_container_width=True)
+    else:
+        with col2:
+            st.write("**Top 10 2-Stop Strategies**")
+            st.dataframe(pd.DataFrame(rows_2), use_container_width=True)

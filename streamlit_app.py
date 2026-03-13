@@ -597,6 +597,70 @@ if 'results' in st.session_state:
             ax.set_title(f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
+            
+    # build 2D arrays: rows = compounds, cols = pit laps
+    compound_order = ['soft', 'medium', 'hard']
+    lap_bins = range(1, config['total_laps'])
+
+    # first stop heatmap
+    heatmap_pit1 = np.zeros((3, config['total_laps']-1))
+    for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop):
+        row = compound_order.index(c[0])
+        heatmap_pit1[row, p-1] += 1
+
+    # second stop heatmap
+    heatmap_pit2 = np.zeros((3, config['total_laps']-1))
+    for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop):
+        row = compound_order.index(c[1])
+        heatmap_pit2[row, p-1] += 1
+        
+    if mobile_mode:
+        st.subheader("2-Stop Strategy Heatmap")
+        
+        fig, (ax1, ax2) = plt.subplots(2, 1, dpi=plot_dpi)
+        ax1.imshow(heatmap_pit1, aspect='auto', cmap='hot',
+                extent=[1, config['total_laps'], 2.5, -0.5])
+        ax1.set_yticks([0, 1, 2])
+        ax1.set_yticklabels(['S', 'M', 'H'])
+        ax1.set_xlabel("Pit Lap")
+        ax1.set_title("First Stop — compound vs lap")
+        
+        ax2.imshow(heatmap_pit2, aspect='auto', cmap='hot',
+                extent=[1, config['total_laps'], 2.5, -0.5])
+        ax2.set_yticks([0, 1, 2])
+        ax2.set_yticklabels(['S', 'M', 'H'])
+        ax2.set_xlabel("Pit Lap")
+        ax2.set_title("Second Stop — compound vs lap")
+        
+        plt.tight_layout()
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+    else:
+        st.subheader("2-Stop Strategy Heatmap")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig, ax = plt.subplots(dpi=plot_dpi)
+            ax.imshow(heatmap_pit1, aspect='auto', cmap='hot',
+                    extent=[1, config['total_laps'], 2.5, -0.5])
+            ax.set_yticks([0, 1, 2])
+            ax.set_yticklabels(['S', 'M', 'H'])
+            ax.set_xlabel("Pit Lap")
+            ax.set_title("First Stop — compound vs lap")
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+        
+        with col2:
+            fig, ax = plt.subplots(dpi=plot_dpi)
+            ax.imshow(heatmap_pit2, aspect='auto', cmap='hot',
+                    extent=[1, config['total_laps'], 2.5, -0.5])
+            ax.set_yticks([0, 1, 2])
+            ax.set_yticklabels(['S', 'M', 'H'])
+            ax.set_xlabel("Pit Lap")
+            ax.set_title("Second Stop — compound vs lap")
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
     # =========================================================================
     # LAP TRACES

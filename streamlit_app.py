@@ -73,6 +73,44 @@ config = {
 
 plot_dpi = 2000
 
+# Short intro — always visible
+st.markdown("""
+This simulator uses **Monte Carlo methods** to find the optimal pit stop strategy for an F1 race.
+Rather than a single deterministic answer, it runs thousands of randomized race scenarios to produce
+a *distribution* of optimal strategies — reflecting the uncertainty real strategists face on race day.
+""")
+
+# Full detail — collapsed by default
+with st.expander("How it works"):
+    st.markdown("""
+    **The core idea**  
+    Every F1 race is different. Safety cars, traffic, and tire variability mean the "optimal" pit lap 
+    changes from race to race. Instead of finding one answer, this simulator asks: *across thousands 
+    of random scenarios, which strategy wins most often?*
+    
+    **Each simulation:**
+    1. Generates a random safety car schedule for the race
+    2. Evaluates candidate pit strategies against that scenario
+    3. Records the best 1-stop and 2-stop strategy
+    
+    **Tire model**  
+    Each compound has a lap time offset vs the medium baseline, a degradation rate (seconds lost per lap), 
+    and a cliff — the age beyond which degradation triples, modelling real grip drop-off behavior.
+    
+    **Traffic model**  
+    After a pit stop, a car rejoins in traffic. The probability of being held up decays exponentially 
+    as the field spreads out over the stint, resetting at each stop.
+    
+    **Safety car**  
+    SC events reduce the effective pit loss — pitting under yellow is cheaper relative to cars staying out.
+    
+    **How to use it**  
+    1. Select a track preset from the sidebar or set parameters manually  
+    2. Adjust tire compounds, traffic, and SC settings if desired  
+    3. Choose number of simulations (more = smoother results, slower runtime)  
+    4. Hit **Run Simulation**
+    """)
+
 def plot_single_race_st(config, pit_laps, compounds):
     sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
     _, lap_times = simulate_race(

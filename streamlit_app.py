@@ -646,15 +646,19 @@ if 'results' in st.session_state:
             'Frequency': freq,
             'Win Rate': f"{freq/n_simulations*100:.1f}%"
         })
+        
+    df_1stop = pd.DataFrame(rows_1)
+    df_1stop.index = range(1, len(df_1stop)+1)
+    df_1stop.index.name = 'Rank'
 
     if mobile_mode:
         st.write("**Top 10 1-Stop Strategies**")
-        st.dataframe(pd.DataFrame(rows_1), use_container_width=True)
+        st.dataframe(df_1stop, use_container_width=True)
     else:
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Top 10 1-Stop Strategies**")
-            st.dataframe(pd.DataFrame(rows_1), use_container_width=True)
+            st.dataframe(df_1stop, use_container_width=True)
 
     # --- 2-stop table ---
     pit_lap_counts_2 = Counter(zip(optimal_laps_2_stop_pit1, optimal_laps_2_stop_pit2, optimal_compounds_2_stop))
@@ -669,14 +673,14 @@ if 'results' in st.session_state:
             'Win Rate': f"{freq/n_simulations*100:.1f}%"
         })
         
-    df = pd.DataFrame(rows_2)
-    df.index = range(1, len(df)+1)
-    df.index.name = 'Rank'
+    df_2stop = pd.DataFrame(rows_2)
+    df_2stop.index = range(1, len(df_2stop)+1)
+    df_2stop.index.name = 'Rank'
 
     if mobile_mode:
         st.write("**Top 10 2-Stop Strategies**")
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df_2stop, use_container_width=True)
     else:
         with col2:
             st.write("**Top 10 2-Stop Strategies**")
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df_2stop, use_container_width=True)

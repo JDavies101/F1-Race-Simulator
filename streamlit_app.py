@@ -311,6 +311,8 @@ if 'results' in st.session_state:
     optimal_compounds_2_stop = []   # best 2-stop compound combo per simulation
     best_times_1_stop        = []   # best 1-stop total race time per simulation
     best_times_2_stop        = []   # best 2-stop total race time per simulation
+    winning_strategies_1_stop = []
+    winning_strategies_2_stop = []  
 
     for best_time_1, best_time_2, best_1, best_2, _, _ in sim_results:
         pit1, c1       = best_1   # e.g. pit1=20, c1=('soft','medium')
@@ -328,6 +330,12 @@ if 'results' in st.session_state:
         optimal_compounds_2_stop.append(c2)
         best_times_1_stop.append(best_time_1)
         best_times_2_stop.append(best_time_2)
+        
+        # only record if this strategy type actually won overall
+        if best[1] == '1-stop':
+            winning_strategies_1_stop.append((pit1, c1))
+        else:
+            winning_strategies_2_stop.append((pit2a, pit2b, c2))
 
     # Overall most common winning strategy across all simulations
     most_common_strategy = max(set(optimal_laps), key=optimal_laps.count)
@@ -661,8 +669,7 @@ if 'results' in st.session_state:
     st.subheader("Strategy Tables")
 
     # --- 1-stop table ---
-    compound_counts_1 = Counter(optimal_compounds_1_stop)
-    pit_lap_counts_1  = Counter(zip(optimal_laps_1_stop, optimal_compounds_1_stop))
+    pit_lap_counts_1 = Counter(winning_strategies_1_stop)
 
     rows_1 = []
     for (pit, comp), freq in pit_lap_counts_1.most_common(10):
@@ -687,7 +694,7 @@ if 'results' in st.session_state:
             st.dataframe(df_1stop, use_container_width=True)
 
     # --- 2-stop table ---
-    pit_lap_counts_2 = Counter(zip(optimal_laps_2_stop_pit1, optimal_laps_2_stop_pit2, optimal_compounds_2_stop))
+    pit_lap_counts_2 = Counter(winning_strategies_2_stop)
 
     rows_2 = []
     for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):

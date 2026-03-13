@@ -485,53 +485,63 @@ if 'results' in st.session_state:
     bins = range(1, config['total_laps'])
     
     if mobile_mode:
-        st.subheader("2-Stop Pit Lap Distribution by Compound")
+        st.subheader("Pit Lap Distribution by Compound")
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, dpi=plot_dpi)
-        ax1.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
+        fig, ax = plt.subplots(dpi=plot_dpi)
+        soft_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
+        med_1stop   = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
+        hard_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
+        ax.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
                 color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
                 edgecolor='black', linewidth=0.3)
-        ax1.set_xlabel("Optimal Pit Lap")
-        ax1.set_ylabel("Frequency")
-        ax1.set_title("First Stop — colored by opening compound")
-        ax1.legend()
-        
-        ax2.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
-                color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                edgecolor='black', linewidth=0.3)
-        ax2.set_xlabel("Optimal Pit Lap")
-        ax2.set_ylabel("Frequency")
-        ax2.set_title("Second Stop — colored by second stint compound")
-        ax2.legend()
-        
-        plt.tight_layout()
+        ax.set_xlabel("Optimal Pit Lap")
+        ax.set_ylabel("Frequency")
+        ax.set_title("1-Stop — opening compound")
+        ax.legend()
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
+        # reuse existing mobile 2-stop compound plots below
+
     else:
-        st.subheader("2-Stop Pit Lap Distribution by Compound")
-        col1, col2 = st.columns(2)
-        
+        st.subheader("Pit Lap Distribution by Compound")
+        col1, col2, col3 = st.columns(3)
+
         with col1:
+            soft_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
+            med_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
+            hard_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
+            fig, ax = plt.subplots(dpi=plot_dpi)
+            ax.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
+                    color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
+                    edgecolor='black', linewidth=0.3)
+            ax.set_xlabel("Optimal Pit Lap")
+            ax.set_ylabel("Frequency")
+            ax.set_title("1-Stop — opening compound")
+            ax.legend()
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+
+        with col2:
             fig, ax = plt.subplots(dpi=plot_dpi)
             ax.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
                     color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
                     edgecolor='black', linewidth=0.3)
             ax.set_xlabel("Optimal Pit Lap")
             ax.set_ylabel("Frequency")
-            ax.set_title("First Stop — colored by opening compound")
+            ax.set_title("2-Stop First Stop — opening compound")
             ax.legend()
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
-        
-        with col2:
+
+        with col3:
             fig, ax = plt.subplots(dpi=plot_dpi)
             ax.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
                     color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
                     edgecolor='black', linewidth=0.3)
             ax.set_xlabel("Optimal Pit Lap")
             ax.set_ylabel("Frequency")
-            ax.set_title("Second Stop — colored by second stint compound")
+            ax.set_title("2-Stop Second Stop — second stint compound")
             ax.legend()
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)

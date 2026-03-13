@@ -671,13 +671,14 @@ if 'results' in st.session_state:
     # --- 1-stop table ---
     pit_lap_counts_1 = Counter(winning_strategies_1_stop)
 
+    total_1stop_wins = len(winning_strategies_1_stop)
     rows_1 = []
     for (pit, comp), freq in pit_lap_counts_1.most_common(10):
         rows_1.append({
             'Starting Tire': comp[0][0].upper(),
             'Stop 1': f"Lap {pit} → {comp[1][0].upper()}",
             'Frequency': freq,
-            'Win Rate': f"{freq/n_simulations*100:.1f}%"
+            'Win Rate': f"{freq/total_1stop_wins*100:.1f}%"
         })
         
     df_1stop = pd.DataFrame(rows_1)
@@ -696,6 +697,7 @@ if 'results' in st.session_state:
     # --- 2-stop table ---
     pit_lap_counts_2 = Counter(winning_strategies_2_stop)
 
+    total_2stop_wins = len(winning_strategies_2_stop)
     rows_2 = []
     for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
         rows_2.append({
@@ -703,7 +705,7 @@ if 'results' in st.session_state:
             'Stop 1': f"Lap {pit1} → {comp[1][0].upper()}",
             'Stop 2': f"Lap {pit2} → {comp[2][0].upper()}",
             'Frequency': freq,
-            'Win Rate': f"{freq/n_simulations*100:.1f}%"
+            'Win Rate': f"{freq/total_2stop_wins*100:.1f}%"
         })
         
     df_2stop = pd.DataFrame(rows_2)

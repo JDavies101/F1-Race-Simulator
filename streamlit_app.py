@@ -688,12 +688,14 @@ if 'results' in st.session_state:
     if mobile_mode:
         st.write("**Top 10 1-Stop Strategies**")
         st.write(f"*{len(winning_strategies_1_stop)} total 1-stop wins ({len(winning_strategies_1_stop)/n_simulations*100:.1f}% of simulations)*")
+        st.caption("Win rate = % of wins within this strategy type, not overall race wins")
         st.dataframe(df_1stop, use_container_width=True)
     else:
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Top 10 1-Stop Strategies**")
             st.write(f"*{len(winning_strategies_1_stop)} total 1-stop wins ({len(winning_strategies_1_stop)/n_simulations*100:.1f}% of simulations)*")
+            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
             st.dataframe(df_1stop, use_container_width=True)
 
     # --- 2-stop table ---
@@ -717,9 +719,11 @@ if 'results' in st.session_state:
     if mobile_mode:
         st.write("**Top 10 2-Stop Strategies**")
         st.write(f"*{len(winning_strategies_2_stop)} total 2-stop wins ({len(winning_strategies_2_stop)/n_simulations*100:.1f}% of simulations)*")
+        st.caption("Win rate = % of wins within this strategy type, not overall race wins")
         st.dataframe(df_2stop, use_container_width=True)
     else:
         with col2:
             st.write("**Top 10 2-Stop Strategies**")
             st.write(f"*{len(winning_strategies_2_stop)} total 2-stop wins ({len(winning_strategies_2_stop)/n_simulations*100:.1f}% of simulations)*")
+            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
             st.dataframe(df_2stop, use_container_width=True)

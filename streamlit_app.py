@@ -615,52 +615,63 @@ if 'results' in st.session_state:
         heatmap_pit2[row, p-1] += 1
         
     if mobile_mode:
-        st.subheader("2-Stop Strategy Heatmap")
+        st.subheader("2-Stop Strategy Bubble Chart")
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, dpi=plot_dpi)
-        ax1.imshow(heatmap_pit1, aspect='auto', cmap='hot',
-                extent=[1, config['total_laps'], 2.5, -0.5])
-        ax1.set_yticks([0, 1, 2])
-        ax1.set_yticklabels(['S', 'M', 'H'])
-        ax1.set_xlabel("Pit Lap")
-        ax1.set_title("First Stop — compound vs lap")
+        fig, (ax1, ax2) = plt.subplots(2, 1, dpi=plot_dpi, figsize=(6, 6))
         
-        ax2.imshow(heatmap_pit2, aspect='auto', cmap='hot',
-                extent=[1, config['total_laps'], 2.5, -0.5])
-        ax2.set_yticks([0, 1, 2])
-        ax2.set_yticklabels(['S', 'M', 'H'])
-        ax2.set_xlabel("Pit Lap")
-        ax2.set_title("Second Stop — compound vs lap")
+        for comp, color, row in zip(['soft', 'medium', 'hard'], ['red', 'gold', 'gray'], [0, 1, 2]):
+            # first stop
+            laps = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == comp]
+            counts = Counter(laps)
+            ax1.scatter(list(counts.keys()), [row]*len(counts),
+                    s=[v*5 for v in counts.values()],
+                    color=color, alpha=0.7, label=comp[0].upper())
+            
+            # second stop
+            laps = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == comp]
+            counts = Counter(laps)
+            ax2.scatter(list(counts.keys()), [row]*len(counts),
+                    s=[v*5 for v in counts.values()],
+                    color=color, alpha=0.7, label=comp[0].upper())
+        
+        for ax, title in zip([ax1, ax2], ['First Stop', 'Second Stop']):
+            ax.set_yticks([0, 1, 2])
+            ax.set_yticklabels(['S', 'M', 'H'])
+            ax.set_xlabel("Pit Lap")
+            ax.set_title(title)
+            ax.legend()
+            ax.set_xlim(0, config['total_laps'])
         
         plt.tight_layout()
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
     else:
-        st.subheader("2-Stop Strategy Heatmap")
+        st.subheader("2-Stop Strategy Bubble Chart")
         col1, col2 = st.columns(2)
         
-        with col1:
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.imshow(heatmap_pit1, aspect='auto', cmap='hot',
-                    extent=[1, config['total_laps'], 2.5, -0.5])
-            ax.set_yticks([0, 1, 2])
-            ax.set_yticklabels(['S', 'M', 'H'])
-            ax.set_xlabel("Pit Lap")
-            ax.set_title("First Stop — compound vs lap")
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
-        
-        with col2:
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.imshow(heatmap_pit2, aspect='auto', cmap='hot',
-                    extent=[1, config['total_laps'], 2.5, -0.5])
-            ax.set_yticks([0, 1, 2])
-            ax.set_yticklabels(['S', 'M', 'H'])
-            ax.set_xlabel("Pit Lap")
-            ax.set_title("Second Stop — compound vs lap")
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+        for col, stop_idx, pit_laps_list, title in zip(
+            [col1, col2],
+            [0, 1],
+            [optimal_laps_2_stop_pit1, optimal_laps_2_stop_pit2],
+            ['First Stop', 'Second Stop']
+        ):
+            with col:
+                fig, ax = plt.subplots(dpi=plot_dpi)
+                for comp, color, row in zip(['soft', 'medium', 'hard'], ['red', 'gold', 'gray'], [0, 1, 2]):
+                    laps = [p for p, c in zip(pit_laps_list, optimal_compounds_2_stop) if c[stop_idx] == comp]
+                    counts = Counter(laps)
+                    ax.scatter(list(counts.keys()), [row]*len(counts),
+                            s=[v*5 for v in counts.values()],
+                            color=color, alpha=0.7, label=comp[0].upper())
+                ax.set_yticks([0, 1, 2])
+                ax.set_yticklabels(['S', 'M', 'H'])
+                ax.set_xlabel("Pit Lap")
+                ax.set_title(title)
+                ax.set_xlim(0, config['total_laps'])
+                ax.legend()
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig)
 
     # =========================================================================
     # LAP TRACES

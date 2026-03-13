@@ -640,9 +640,8 @@ if 'results' in st.session_state:
     rows_1 = []
     for (pit, comp), freq in pit_lap_counts_1.most_common(10):
         rows_1.append({
-            'Stint 1': comp[0][0].upper(),
-            'Pit Lap': pit,
-            'Stint 2': comp[1][0].upper(),
+            'Starting Tire': comp[0][0].upper(),
+            'Stop 1': f"Lap {pit} → {comp[1][0].upper()}",
             'Frequency': freq,
             'Win Rate': f"{freq/n_simulations*100:.1f}%"
         })
@@ -666,9 +665,9 @@ if 'results' in st.session_state:
     rows_2 = []
     for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
         rows_2.append({
-            'Stop 1': f"{comp[0][0].upper()} → Lap {pit1}",
-            'Stop 2': f"{comp[1][0].upper()} → Lap {pit2}",
-            'Stint 3': comp[2][0].upper(),
+            'Starting Tire': comp[0][0].upper(),
+            'Stop 1': f"Lap {pit1} → {comp[1][0].upper()}",
+            'Stop 2': f"Lap {pit2} → {comp[2][0].upper()}",
             'Frequency': freq,
             'Win Rate': f"{freq/n_simulations*100:.1f}%"
         })

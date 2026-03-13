@@ -405,8 +405,9 @@ if 'results' in st.session_state:
     # Bar chart showing how often 1-stop vs 2-stop was the winning strategy.
     # Always rendered full width regardless of mobile_mode.
     # =========================================================================
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    
+    if mobile_mode:
+        
         st.subheader("Strategy Distribution")
         counts = Counter(optimal_laps)
         fig, ax = plt.subplots(dpi=plot_dpi)
@@ -416,6 +417,20 @@ if 'results' in st.session_state:
         ax.set_title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
+    
+    else:
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.subheader("Strategy Distribution")
+            counts = Counter(optimal_laps)
+            fig, ax = plt.subplots(dpi=plot_dpi)
+            ax.bar(counts.keys(), counts.values())
+            ax.set_xlabel("Strategy")
+            ax.set_ylabel("Frequency")
+            ax.set_title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
     # =========================================================================
     # PIT LAP DISTRIBUTION PLOTS

@@ -2,7 +2,7 @@
 
 A Monte Carlo race strategy simulator for Formula 1, built in Python with an interactive Streamlit web interface. Given a set of race parameters, the simulator runs thousands of randomised race scenarios in parallel to produce a statistical distribution of optimal pit stop strategies — reflecting the uncertainty real strategists face on race day.
 
-**[Live Demo →](https://f1-race-simulator.streamlit.app/)** *(update link after deployment)*
+**[Live Demo →](https://f1-race-simulator.streamlit.app/)**
 
 ---
  

@@ -401,6 +401,10 @@ def main():
     optimal_laps_2_stop_pit2 = []  # best 2-stop second pit lap per simulation
     optimal_compounds_1_stop = []  # best 1-stop compound combo per simulation
     optimal_compounds_2_stop = []  # best 2-stop compound combo per simulation
+    winning_strategies_1_stop = []
+    winning_strategies_2_stop = []
+    best_times_1_stop = []
+    best_times_2_stop = []
 
     # -------------------------------------------------------------------------
     # PARALLEL SIMULATION LOOP
@@ -439,6 +443,12 @@ def main():
         optimal_laps_2_stop_pit2.append(pit2b)
         optimal_compounds_1_stop.append(c1)
         optimal_compounds_2_stop.append(c2)
+        best_times_1_stop.append(best_time_1)
+        best_times_2_stop.append(best_time_2)
+        if best[1] == '1-stop':
+            winning_strategies_1_stop.append((pit1, c1))
+        else:
+            winning_strategies_2_stop.append((pit2a, pit2b, c2))
 
     # -------------------------------------------------------------------------
     # LAP TRACE: visualize a single race with the most common winning strategy
@@ -458,12 +468,18 @@ def main():
     plot_single_race(config, [best_1stop_pit], best_1stop_compounds, filename='lap_trace_1stop.png')
     plot_single_race(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds, filename='lap_trace_2stop.png')
 
+    avg_time_1stop = np.mean(best_times_1_stop)
+    avg_time_2stop = np.mean(best_times_2_stop)
     most_common_strategy = max(set(optimal_laps), key=optimal_laps.count)
 
     # Print summary statistics
     print(f"Most common optimal pit strategy: {most_common_strategy}")
-    print(f"Best 1-stop: pit lap {pit1}, compounds {c1}")
-    print(f"Best 2-stop: pit laps {pit2a}/{pit2b}, compounds {c2}")
+    print(f"1-stop wins: {optimal_laps.count('1-stop')}/{n_simulations} ({optimal_laps.count('1-stop')/n_simulations*100:.1f}%)")
+    print(f"2-stop wins: {optimal_laps.count('2-stop')}/{n_simulations} ({optimal_laps.count('2-stop')/n_simulations*100:.1f}%)")
+    print(f"Avg best 1-stop time: {avg_time_1stop:.1f}s ({avg_time_1stop//60:.0f}m {avg_time_1stop%60:.1f}s)")
+    print(f"Avg best 2-stop time: {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
+    print(f"Best 1-stop: pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
+    print(f"Best 2-stop: pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
 
     # -------------------------------------------------------------------------
     # PLOTS
@@ -518,6 +534,44 @@ def main():
     plt.legend()
     plt.savefig('monte_carlo_dist_medium_v1_2_stop.png', dpi=450, bbox_inches='tight')
     plt.close()
+    
+    bins = range(1, config['total_laps'])
+
+    soft_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
+    med_1stop   = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
+    hard_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
+    soft_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'soft']
+    med_pit1    = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'medium']
+    hard_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'hard']
+    soft_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'soft']
+    med_pit2    = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'medium']
+    hard_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'hard']
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    ax1.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
+            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
+    ax1.set_xlabel("Optimal Pit Lap")
+    ax1.set_ylabel("Frequency")
+    ax1.set_title("1-Stop — opening compound")
+    ax1.legend()
+
+    ax2.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
+            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
+    ax2.set_xlabel("Optimal Pit Lap")
+    ax2.set_ylabel("Frequency")
+    ax2.set_title("2-Stop First Stop — opening compound")
+    ax2.legend()
+
+    ax3.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
+            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
+    ax3.set_xlabel("Optimal Pit Lap")
+    ax3.set_ylabel("Frequency")
+    ax3.set_title("2-Stop Second Stop — second stint compound")
+    ax3.legend()
+
+    plt.tight_layout()
+    plt.savefig('pit_lap_by_compound.png', dpi=450, bbox_inches='tight')
+    plt.close()
 
     # Overall strategy distribution: how often 1-stop vs 2-stop wins
     counts = Counter(optimal_laps)
@@ -526,7 +580,21 @@ def main():
     plt.ylabel("Frequency")
     plt.title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
     plt.savefig('monte_carlo_dist_medium_v1_strategy.png', dpi=450, bbox_inches='tight')
-    plt.show()
+    plt.close()
+    
+    print("\n--- Top 10 1-Stop Strategies ---")
+    pit_lap_counts_1 = Counter(winning_strategies_1_stop)
+    total_1stop_wins = len(winning_strategies_1_stop)
+    for i, ((pit, comp), freq) in enumerate(pit_lap_counts_1.most_common(10), 1):
+        print(f"{i:2}. Start: {comp[0][0].upper()} | Stop 1: Lap {pit} → {comp[1][0].upper()} | "
+            f"Freq: {freq} | Win Rate: {freq/total_1stop_wins*100:.1f}%")
+
+    print("\n--- Top 10 2-Stop Strategies ---")
+    pit_lap_counts_2 = Counter(winning_strategies_2_stop)
+    total_2stop_wins = len(winning_strategies_2_stop)
+    for i, ((pit1, pit2, comp), freq) in enumerate(pit_lap_counts_2.most_common(10), 1):
+        print(f"{i:2}. Start: {comp[0][0].upper()} | Stop 1: Lap {pit1} → {comp[1][0].upper()} | "
+            f"Stop 2: Lap {pit2} → {comp[2][0].upper()} | Freq: {freq} | Win Rate: {freq/total_2stop_wins*100:.1f}%")
 
 
 if __name__ == "__main__":

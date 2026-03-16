@@ -2,5 +2,3 @@ streamlit
 numpy
 matplotlib
 pandas
-io
-zipfile

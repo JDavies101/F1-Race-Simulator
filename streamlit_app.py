@@ -240,11 +240,11 @@ def plot_single_race_st(config, pit_laps, compounds):
 # =============================================================================
 
 def make_compound_hist(soft, med, hard, title, total_laps):
-    """Build a stacked Plotly histogram colored by compound (S/M/H)."""
+    bin_spec = dict(start=1, end=total_laps, size=1)
     fig = go.Figure()
-    fig.add_trace(go.Histogram(x=soft, name='S', marker_color='red',  opacity=0.8, nbinsx=total_laps))
-    fig.add_trace(go.Histogram(x=med,  name='M', marker_color='gold', opacity=0.8, nbinsx=total_laps))
-    fig.add_trace(go.Histogram(x=hard, name='H', marker_color='gray', opacity=0.8, nbinsx=total_laps))
+    fig.add_trace(go.Histogram(x=soft, name='S', marker_color='red',  opacity=0.8, xbins=bin_spec))
+    fig.add_trace(go.Histogram(x=med,  name='M', marker_color='gold', opacity=0.8, xbins=bin_spec))
+    fig.add_trace(go.Histogram(x=hard, name='H', marker_color='gray', opacity=0.8, xbins=bin_spec))
     fig.update_layout(barmode='stack', title=title,
                       xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
     return fig
@@ -412,11 +412,14 @@ if 'results' in st.session_state:
 
         with c2:
             st.subheader("2-Stop Pit Lap Distribution")
+            bin_start = 1
+            bin_end = config['total_laps']
+            bin_size = 1  # one bin per lap
             fig = go.Figure()
             fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit1, name='First stop',
-                                       opacity=0.7, nbinsx=config['total_laps']))
+                                       opacity=0.7, xbins=dict(start=bin_start, end=bin_end, size=bin_size)))
             fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit2, name='Second stop',
-                                       opacity=0.7, nbinsx=config['total_laps']))
+                                       opacity=0.7, xbins=dict(start=bin_start, end=bin_end, size=bin_size)))
             fig.update_layout(barmode='overlay',
                               title=f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)",
                               xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')

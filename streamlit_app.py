@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 import io
 import zipfile
-from collections import Counter
+from collections import Counter, defaultdict
 from monte_carlo_medium_v1 import simulate_race, run_simulation, generate_safety_cars
 from track_presets import TRACK_PRESETS
 
@@ -242,9 +242,12 @@ def plot_single_race_st(config, pit_laps, compounds):
 def make_compound_hist(soft, med, hard, title, total_laps):
     bin_spec = dict(start=1, end=total_laps, size=1)
     fig = go.Figure()
-    fig.add_trace(go.Histogram(x=soft, name='S', marker_color='red',  opacity=0.8, xbins=bin_spec))
-    fig.add_trace(go.Histogram(x=med,  name='M', marker_color='gold', opacity=0.8, xbins=bin_spec))
-    fig.add_trace(go.Histogram(x=hard, name='H', marker_color='gray', opacity=0.8, xbins=bin_spec))
+    fig.add_trace(go.Histogram(x=soft, name='S', marker_color='red',  opacity=0.8, xbins=bin_spec,
+                               marker_line=dict(color='white', width=0.5)))
+    fig.add_trace(go.Histogram(x=med,  name='M', marker_color='gold', opacity=0.8, xbins=bin_spec,
+                               marker_line=dict(color='white', width=0.5)))
+    fig.add_trace(go.Histogram(x=hard, name='H', marker_color='gray', opacity=0.8, xbins=bin_spec,
+                               marker_line=dict(color='white', width=0.5)))
     fig.update_layout(barmode='stack', title=title,
                       xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
     return fig
@@ -313,9 +316,9 @@ if 'results' in st.session_state:
             best_times_1_stop.append(best_time_1)
             best_times_2_stop.append(best_time_2)
             if best[1] == '1-stop':
-                winning_strategies_1_stop.append((pit1, c1))
+                winning_strategies_1_stop.append((pit1, c1, best_time_1))
             else:
-                winning_strategies_2_stop.append((pit2a, pit2b, c2))
+                winning_strategies_2_stop.append((pit2a, pit2b, c2, best_time_2))
 
         most_common_strategy = max(set(optimal_laps), key=optimal_laps.count)
         avg_time_1stop = np.mean(best_times_1_stop)
@@ -324,11 +327,20 @@ if 'results' in st.session_state:
         # --- Representative strategies ---
         # Pulled from rank 1 of winning strategy counters so lap traces
         # always match the strategy tables exactly.
-        pit_lap_counts_1 = Counter(winning_strategies_1_stop)
-        pit_lap_counts_2 = Counter(winning_strategies_2_stop)
+        times_by_strategy_1 = defaultdict(list)
+        times_by_strategy_2 = defaultdict(list)
+        for pit, comp, t in winning_strategies_1_stop:
+            times_by_strategy_1[(pit, comp)].append(t)
+        for pit1, pit2, comp, t in winning_strategies_2_stop:
+            times_by_strategy_2[(pit1, pit2, comp)].append(t)
+        pit_lap_counts_1 = Counter({k: len(v) for k, v in times_by_strategy_1.items()})
+        pit_lap_counts_2 = Counter({k: len(v) for k, v in times_by_strategy_2.items()})
 
         if pit_lap_counts_1:
-            top_1stop            = pit_lap_counts_1.most_common(1)[0][0]
+            top_freq = pit_lap_counts_1.most_common(1)[0][1]
+            # among all strategies with top frequency, pick lowest avg time
+            top_candidates = [k for k, v in pit_lap_counts_1.items() if v == top_freq]
+            top_1stop = min(top_candidates, key=lambda k: np.mean(times_by_strategy_1[k]))
             best_1stop_pit       = top_1stop[0]
             best_1stop_compounds = list(top_1stop[1])
         else:
@@ -336,7 +348,9 @@ if 'results' in st.session_state:
             best_1stop_compounds = list(Counter(optimal_compounds_1_stop).most_common(1)[0][0])
 
         if pit_lap_counts_2:
-            top_2stop            = pit_lap_counts_2.most_common(1)[0][0]
+            top_freq = pit_lap_counts_2.most_common(1)[0][1]
+            top_candidates = [k for k, v in pit_lap_counts_2.items() if v == top_freq]
+            top_2stop = min(top_candidates, key=lambda k: np.mean(times_by_strategy_2[k]))
             best_2stop_pit1      = top_2stop[0]
             best_2stop_pit2      = top_2stop[1]
             best_2stop_compounds = list(top_2stop[2])
@@ -404,11 +418,13 @@ if 'results' in st.session_state:
         with c1:
             st.subheader("1-Stop Pit Lap Distribution")
             fig = px.histogram(x=optimal_laps_1_stop, nbins=config['total_laps'],
-                               labels={'x': 'Optimal Pit Lap', 'y': 'Frequency'},
-                               title=f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
+                   labels={'x': 'Optimal Pit Lap'},
+                   title=f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
             fig.add_vline(x=config['total_laps']/2, line_dash='dash', line_color='red',
-                          annotation_text='Deterministic optimum')
-            st.plotly_chart(fig, width='stretch')
+                        annotation_text='Deterministic optimum')
+            fig.update_traces(marker_line=dict(color='white', width=0.5))
+            fig.update_layout(xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
+            st.plotly_chart(fig, use_container_width=True)
 
         with c2:
             st.subheader("2-Stop Pit Lap Distribution")
@@ -417,9 +433,13 @@ if 'results' in st.session_state:
             bin_size = 1  # one bin per lap
             fig = go.Figure()
             fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit1, name='First stop',
-                                       opacity=0.7, xbins=dict(start=bin_start, end=bin_end, size=bin_size)))
+                                    opacity=0.7,
+                                    xbins=dict(start=bin_start, end=bin_end, size=bin_size),
+                                    marker_line=dict(color='white', width=0.5)))
             fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit2, name='Second stop',
-                                       opacity=0.7, xbins=dict(start=bin_start, end=bin_end, size=bin_size)))
+                                    opacity=0.7,
+                                    xbins=dict(start=bin_start, end=bin_end, size=bin_size),
+                                    marker_line=dict(color='white', width=0.5)))
             fig.update_layout(barmode='overlay',
                               title=f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)",
                               xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
@@ -553,6 +573,8 @@ if 'results' in st.session_state:
 
         total_1stop_wins = len(winning_strategies_1_stop)
         rows_1 = []
+        # table building — strip the time from the tuple
+        pit_lap_counts_1 = Counter({(pit, comp): len(v) for (pit, comp), v in times_by_strategy_1.items()})
         for (pit, comp), freq in pit_lap_counts_1.most_common(10):
             rows_1.append({
                 'Starting Tire': comp[0][0].upper(),
@@ -566,6 +588,8 @@ if 'results' in st.session_state:
 
         total_2stop_wins = len(winning_strategies_2_stop)
         rows_2 = []
+        # table building — strip the time from the tuple
+        pit_lap_counts_2 = Counter({k: len(v) for k, v in times_by_strategy_2.items()})
         for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
             rows_2.append({
                 'Starting Tire': comp[0][0].upper(),

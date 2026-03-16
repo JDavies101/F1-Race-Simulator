@@ -390,7 +390,7 @@ if 'results' in st.session_state:
             fig = px.bar(x=list(counts.keys()), y=list(counts.values()),
                          labels={'x': 'Strategy', 'y': 'Frequency'},
                          title=f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         # =========================================================================
         # PIT LAP DISTRIBUTION PLOTS
@@ -408,7 +408,7 @@ if 'results' in st.session_state:
                                title=f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
             fig.add_vline(x=config['total_laps']/2, line_dash='dash', line_color='red',
                           annotation_text='Deterministic optimum')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("2-Stop Pit Lap Distribution")
@@ -424,7 +424,7 @@ if 'results' in st.session_state:
                           annotation_text='Stop 1 optimum')
             fig.add_vline(x=2*config['total_laps']/3, line_dash='dash', line_color='orange',
                           annotation_text='Stop 2 optimum')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         # =========================================================================
         # PIT LAP BY COMPOUND — stacked histograms
@@ -449,15 +449,15 @@ if 'results' in st.session_state:
         with c1:
             st.plotly_chart(make_compound_hist(soft_1stop, med_1stop, hard_1stop,
                             "1-Stop — opening compound", config['total_laps']),
-                            use_container_width=True)
+                            width='stretch')
         with c2:
             st.plotly_chart(make_compound_hist(soft_pit1, med_pit1, hard_pit1,
                             "2-Stop First Stop — opening compound", config['total_laps']),
-                            use_container_width=True)
+                            width='stretch')
         with c3:
             st.plotly_chart(make_compound_hist(soft_pit2, med_pit2, hard_pit2,
                             "2-Stop Second Stop — second stint compound", config['total_laps']),
-                            use_container_width=True)
+                            width='stretch')
 
         # =========================================================================
         # COMPOUND DISTRIBUTION BAR CHARTS
@@ -477,7 +477,7 @@ if 'results' in st.session_state:
             fig = px.bar(x=labels, y=values,
                          labels={'x': 'Compound Combination', 'y': 'Frequency'},
                          title=f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("2-Stop Compound Distribution")
@@ -488,7 +488,7 @@ if 'results' in st.session_state:
             fig = px.bar(x=labels, y=values,
                          labels={'x': 'Compound Combination', 'y': 'Frequency'},
                          title=f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         # =========================================================================
         # LAP TRACES — Plotly interactive
@@ -504,12 +504,12 @@ if 'results' in st.session_state:
         with c1:
             st.subheader("Best 1-Stop Lap Trace")
             fig = plot_single_race_st(config, [best_1stop_pit], best_1stop_compounds)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("Best 2-Stop Lap Trace")
             fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         # Generate matplotlib versions of traces for PNG download
         # (Plotly PNG export requires kaleido which isn't available on Streamlit Cloud)
@@ -584,13 +584,13 @@ if 'results' in st.session_state:
             st.write("**Top 10 1-Stop Strategies**")
             st.write(f"*{total_1stop_wins} total 1-stop wins ({total_1stop_wins/n_simulations*100:.1f}% of simulations)*")
             st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-            st.dataframe(df_1stop, use_container_width=True)
+            st.dataframe(df_1stop, width='stretch')
 
         with c2:
             st.write("**Top 10 2-Stop Strategies**")
             st.write(f"*{total_2stop_wins} total 2-stop wins ({total_2stop_wins/n_simulations*100:.1f}% of simulations)*")
             st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-            st.dataframe(df_2stop, use_container_width=True)
+            st.dataframe(df_2stop, width='stretch')
 
         # =========================================================================
         # DOWNLOAD SECTION

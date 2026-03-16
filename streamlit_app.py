@@ -20,7 +20,7 @@
 # =============================================================================
 
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.express as px
 import numpy as np
 import pandas as pd
 import io
@@ -200,61 +200,48 @@ plot_dpi = 500
 # =============================================================================
 
 def plot_single_race_st(config, pit_laps, compounds):
-    """
-    Generate a lap time trace figure for a single race, returning a matplotlib
-    figure object for rendering with st.pyplot().
-
-    This is the Streamlit equivalent of plot_single_race() in the standalone
-    script. Instead of saving to a file, it returns the figure object directly.
-    A fresh random SC scenario is generated each time this is called, so the
-    trace will differ slightly on each run — this is intentional and reflects
-    the stochastic nature of the simulation.
-
-    Parameters
-    ----------
-    config : dict
-        Race configuration (from session state, not current sidebar values).
-    pit_laps : list of int
-        Pit stop lap numbers for the strategy being visualized.
-    compounds : list of str
-        Tire compound sequence for each stint.
-
-    Returns
-    -------
-    fig : matplotlib Figure
-        The rendered lap trace figure, ready for st.pyplot().
-    """
-
-    # Generate a random SC scenario for this visualization
     sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
-
     _, lap_times = simulate_race(
         pit_laps[0], compounds, sc_laps, config,
         pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
 
-    # Color coding matches real F1 broadcast conventions (S=red, M=yellow, H=gray)
     compound_colors = {'soft': 'red', 'medium': 'yellow', 'hard': 'gray'}
-
-    # Stint boundaries define the shaded regions: [0, pit1, pit2, total_laps]
     stint_boundaries = [0] + pit_laps + [config['total_laps']]
 
-    fig, ax = plt.subplots(dpi=plot_dpi)
-    ax.plot(range(1, config['total_laps'] + 1), lap_times)
+    fig = go.Figure()
 
-    # Vertical dashed lines mark each pit stop lap
-    for pit in pit_laps:
-        ax.axvline(x=pit, color='red', linestyle='--', label=f'Pit lap {pit}')
-
-    # Shaded regions per stint, colored by compound
+    # shade stints
     for i, (start, end) in enumerate(zip(stint_boundaries, stint_boundaries[1:])):
-        ax.axvspan(start, end, alpha=0.2, color=compound_colors[compounds[i]],
-                   label=f'Stint {i+1}: {compounds[i][0].upper()}')
+        color = compound_colors[compounds[i]]
+        fig.add_vrect(x0=start, x1=end, fillcolor=color, opacity=0.15,
+                      layer='below', line_width=0)
+        # invisible scatter for legend entry
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+                                 marker=dict(color=color, size=10),
+                                 name=f'Stint {i+1}: {compounds[i][0].upper()}'))
 
-    ax.set_xlabel('Lap')
-    ax.set_ylabel('Lap time (s)')
-    ax.set_title('Single race lap time trace')
-    ax.set_ylim(config['base_lap_time'] - 2, config['base_lap_time'] + config['pit_loss'] + 10)
-    ax.legend()
+    # pit stop lines
+    for pit in pit_laps:
+        fig.add_vline(x=pit, line_dash='dash', line_color='red',
+                      annotation_text=f'Pit lap {pit}')
+
+    # lap time trace
+    fig.add_trace(go.Scatter(
+        x=list(range(1, config['total_laps']+1)),
+        y=lap_times,
+        mode='lines',
+        name='Lap time',
+        line=dict(color='royalblue', width=2),
+        hovertemplate='Lap %{x}<br>%{y:.2f}s<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title='Single race lap time trace',
+        xaxis_title='Lap',
+        yaxis_title='Lap time (s)',
+        yaxis_range=[config['base_lap_time']-2,
+                     config['base_lap_time']+config['pit_loss']+10]
+    )
     return fig
 
 # =============================================================================
@@ -365,21 +352,30 @@ if 'results' in st.session_state:
         pit_lap_counts_1 = Counter(winning_strategies_1_stop)
         pit_lap_counts_2 = Counter(winning_strategies_2_stop)
 
-        # 1-stop: use rank 1 from winning strategies
-        top_1stop            = pit_lap_counts_1.most_common(1)[0][0]
-        best_1stop_pit       = top_1stop[0]
-        best_1stop_compounds = list(top_1stop[1])
+        # fallback if no 1-stop wins
+        if pit_lap_counts_1:
+            top_1stop            = pit_lap_counts_1.most_common(1)[0][0]
+            best_1stop_pit       = top_1stop[0]
+            best_1stop_compounds = list(top_1stop[1])
+        else:
+            # fallback if no 1-stop wins — use midpoint and most common compounds
+            best_1stop_pit       = config['total_laps'] // 2
+            best_1stop_compounds = list(Counter(optimal_compounds_1_stop).most_common(1)[0][0])
 
-        # 2-stop: use rank 1 from winning strategies
-        top_2stop            = pit_lap_counts_2.most_common(1)[0][0]
-        best_2stop_pit1      = top_2stop[0]
-        best_2stop_pit2      = top_2stop[1]
-        best_2stop_compounds = list(top_2stop[2])
+        # fallback if no 2-stop wins
+        if pit_lap_counts_2:
+            top_2stop            = pit_lap_counts_2.most_common(1)[0][0]
+            best_2stop_pit1      = top_2stop[0]
+            best_2stop_pit2      = top_2stop[1]
+            best_2stop_compounds = list(top_2stop[2])
+        else:
+            best_2stop_pit1      = config['total_laps'] // 3
+            best_2stop_pit2      = 2 * config['total_laps'] // 3
+            best_2stop_compounds = list(Counter(optimal_compounds_2_stop).most_common(1)[0][0])
 
         # =========================================================================
         # METRICS ROW
-        # st.metric() renders a large-font KPI card with label and value.
-        # Mobile mode uses st.write() in a single column instead of 5-column layout.
+        # st.metric() renders large-font KPI cards. Mobile stacks them vertically.
         # =========================================================================
         if mobile_mode:
             st.write("Most Common Strategy", most_common_strategy)
@@ -402,443 +398,182 @@ if 'results' in st.session_state:
         # Mobile mode stacks vertically; desktop mode uses 2 columns.
         # =========================================================================
         st.subheader("Strategy Summary")
-
         if mobile_mode:
+            c1, c2 = st.container(), st.container()
+        else:
+            c1, c2 = st.columns(2)
+        with c1:
             st.write(f"**Best 1-Stop:** Pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
             st.write(f"**Avg race time:** {avg_time_1stop:.1f}s ({avg_time_1stop//60:.0f}m {avg_time_1stop%60:.1f}s)")
+        with c2:
             st.write(f"**Best 2-Stop:** Pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
             st.write(f"**Avg race time:** {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"**Best 1-Stop:** Pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
-                st.write(f"**Avg race time:** {avg_time_1stop:.1f}s ({avg_time_1stop//60:.0f}m {avg_time_1stop%60:.1f}s)")
-            with col2:
-                st.write(f"**Best 2-Stop:** Pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
-                st.write(f"**Avg race time:** {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
 
         # =========================================================================
-        # STRATEGY DISTRIBUTION PLOT (full width)
-        # Bar chart showing how often 1-stop vs 2-stop was the winning strategy.
-        # Always rendered full width regardless of mobile_mode.
+        # STRATEGY DISTRIBUTION PLOT
+        # Centered on desktop via [1,2,1] columns; full width on mobile.
         # =========================================================================
-        
         if mobile_mode:
-            
+            center = st.container()
+        else:
+            _, center, _ = st.columns([1, 2, 1])
+        with center:
             st.subheader("Strategy Distribution")
             counts = Counter(optimal_laps)
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.bar(counts.keys(), counts.values())
-            ax.set_xlabel("Strategy")
-            ax.set_ylabel("Frequency")
-            ax.set_title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['Strategy Distribution Plot'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-        
-        else:
-            
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.subheader("Strategy Distribution")
-                counts = Counter(optimal_laps)
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.bar(counts.keys(), counts.values())
-                ax.set_xlabel("Strategy")
-                ax.set_ylabel("Frequency")
-                ax.set_title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['Strategy Distribution Plot'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+            fig = px.bar(
+                x=list(counts.keys()),
+                y=list(counts.values()),
+                labels={'x': 'Strategy', 'y': 'Frequency'},
+                title=f"Best Pit Strategy Distribution ({n_simulations:,} simulations)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['Strategy Distribution'] = io.BytesIO(fig.to_image(format='png'))
 
         # =========================================================================
         # PIT LAP DISTRIBUTION PLOTS
         # Histograms showing which pit lap was optimal across simulations.
-        # Red dashed lines show the deterministic optimum (equal split across stints).
+        # Vertical lines show the deterministic optimum (equal split across stints).
         # =========================================================================
         if mobile_mode:
-            st.subheader("1-Stop Pit Lap Distribution")
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.hist(optimal_laps_1_stop, bins=range(1, config['total_laps']), edgecolor='black')
-            ax.axvline(x=config['total_laps']/2, color='red', linestyle='--', label='Deterministic optimum')
-            ax.set_xlabel("Optimal Pit Lap")
-            ax.set_ylabel("Frequency")
-            ax.set_title(f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
-            ax.legend()
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['1-Stop Pit Lap Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
-            st.subheader("2-Stop Pit Lap Distribution")
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.hist(optimal_laps_2_stop_pit1, bins=range(1, config['total_laps']), edgecolor='black', alpha=0.7, label='First stop')
-            ax.hist(optimal_laps_2_stop_pit2, bins=range(1, config['total_laps']), edgecolor='black', alpha=0.7, label='Second stop')
-            ax.axvline(x=config['total_laps']/3,   color='red', linestyle='--', label='Deterministic optimum, stop 1')
-            ax.axvline(x=2*config['total_laps']/3, color='red', linestyle='--', label='Deterministic optimum, stop 2')
-            ax.set_xlabel("Optimal Pit Lap")
-            ax.set_ylabel("Frequency")
-            ax.set_title(f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
-            ax.legend()
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['2-Stop Pit Lap Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
+            c1, c2 = st.container(), st.container()
         else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("1-Stop Pit Lap Distribution")
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.hist(optimal_laps_1_stop, bins=range(1, config['total_laps']), edgecolor='black')
-                ax.axvline(x=config['total_laps']/2, color='red', linestyle='--', label='Deterministic optimum')
-                ax.set_xlabel("Optimal Pit Lap")
-                ax.set_ylabel("Frequency")
-                ax.set_title(f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
-                ax.legend()
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['1-Stop Pit Lap Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+            c1, c2 = st.columns(2)
 
-            with col2:
-                st.subheader("2-Stop Pit Lap Distribution")
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.hist(optimal_laps_2_stop_pit1, bins=range(1, config['total_laps']), edgecolor='black', alpha=0.7, label='First stop')
-                ax.hist(optimal_laps_2_stop_pit2, bins=range(1, config['total_laps']), edgecolor='black', alpha=0.7, label='Second stop')
-                ax.axvline(x=config['total_laps']/3,   color='red', linestyle='--', label='Deterministic optimum, stop 1')
-                ax.axvline(x=2*config['total_laps']/3, color='red', linestyle='--', label='Deterministic optimum, stop 2')
-                ax.set_xlabel("Optimal Pit Lap")
-                ax.set_ylabel("Frequency")
-                ax.set_title(f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
-                ax.legend()
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['2-Stop Pit Lap Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+        with c1:
+            st.subheader("1-Stop Pit Lap Distribution")
+            fig = px.histogram(
+                x=optimal_laps_1_stop,
+                nbins=config['total_laps'],
+                labels={'x': 'Optimal Pit Lap', 'y': 'Frequency'},
+                title=f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)"
+            )
+            fig.add_vline(x=config['total_laps']/2, line_dash='dash', line_color='red',
+                          annotation_text='Deterministic optimum')
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['1-Stop Pit Lap Distribution'] = io.BytesIO(fig.to_image(format='png'))
+
+        with c2:
+            st.subheader("2-Stop Pit Lap Distribution")
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit1, name='First stop', opacity=0.7,
+                                       nbinsx=config['total_laps']))
+            fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit2, name='Second stop', opacity=0.7,
+                                       nbinsx=config['total_laps']))
+            fig.update_layout(barmode='overlay',
+                              title=f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)",
+                              xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
+            fig.add_vline(x=config['total_laps']/3,   line_dash='dash', line_color='red',
+                          annotation_text='Stop 1 optimum')
+            fig.add_vline(x=2*config['total_laps']/3, line_dash='dash', line_color='orange',
+                          annotation_text='Stop 2 optimum')
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['2-Stop Pit Lap Distribution'] = io.BytesIO(fig.to_image(format='png'))
             
-        # separate pit laps by compound used at each stop
+        # =========================================================================
+        # PIT LAP BY COMPOUND PLOTS
+        # Stacked histograms explaining bimodal peaks by compound choice.
+        # =========================================================================
+        # Separate pit laps by compound used at each stop
+        soft_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
+        med_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
+        hard_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
         soft_pit1  = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'soft']
         med_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'medium']
         hard_pit1  = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'hard']
-
         soft_pit2  = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'soft']
         med_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'medium']
         hard_pit2  = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'hard']
 
-        bins = range(1, config['total_laps'])
-        
+        def make_compound_hist(soft, med, hard, title):
+            """Build a stacked Plotly histogram colored by compound."""
+            fig = go.Figure()
+            fig.add_trace(go.Histogram(x=soft, name='S', marker_color='red',   opacity=0.8, nbinsx=config['total_laps']))
+            fig.add_trace(go.Histogram(x=med,  name='M', marker_color='gold',  opacity=0.8, nbinsx=config['total_laps']))
+            fig.add_trace(go.Histogram(x=hard, name='H', marker_color='gray',  opacity=0.8, nbinsx=config['total_laps']))
+            fig.update_layout(barmode='stack', title=title,
+                              xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
+            return fig
+
+        st.subheader("Pit Lap Distribution by Compound")
         if mobile_mode:
-            st.subheader("Pit Lap Distribution by Compound")
-            
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            soft_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
-            med_1stop   = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
-            hard_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
-            ax.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
-                    color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                    edgecolor='black', linewidth=0.3)
-            ax.set_xlabel("Optimal Pit Lap")
-            ax.set_ylabel("Frequency")
-            ax.set_title("1-Stop — opening compound")
-            ax.legend()
-            st.pyplot(fig, width='stretch')
-
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['1-Stop Compound Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-            
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
-                    color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                    edgecolor='black', linewidth=0.3)
-            ax.set_xlabel("Optimal Pit Lap")
-            ax.set_ylabel("Frequency")
-            ax.set_title("2-Stop First Stop — opening compound")
-            ax.legend()
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['2-Stop First Stop Compound Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
-                    color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                    edgecolor='black', linewidth=0.3)
-            ax.set_xlabel("Optimal Pit Lap")
-            ax.set_ylabel("Frequency")
-            ax.set_title("2-Stop Second Stop — second stint compound")
-            ax.legend()
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['2-Stop Second Stop Compound Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
+            c1, c2, c3 = st.container(), st.container(), st.container()
         else:
-            st.subheader("Pit Lap Distribution by Compound")
-            col1, col2, col3 = st.columns(3)
+            c1, c2, c3 = st.columns(3)
 
-            with col1:
-                soft_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
-                med_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
-                hard_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
-                        color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                        edgecolor='black', linewidth=0.3)
-                ax.set_xlabel("Optimal Pit Lap")
-                ax.set_ylabel("Frequency")
-                ax.set_title("1-Stop — opening compound")
-                ax.legend()
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['1-Stop Compound Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
-
-            with col2:
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
-                        color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                        edgecolor='black', linewidth=0.3)
-                ax.set_xlabel("Optimal Pit Lap")
-                ax.set_ylabel("Frequency")
-                ax.set_title("2-Stop First Stop — opening compound")
-                ax.legend()
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['2-Stop First Stop Compound Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
-
-            with col3:
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
-                        color=['red', 'gold', 'gray'], label=['S', 'M', 'H'],
-                        edgecolor='black', linewidth=0.3)
-                ax.set_xlabel("Optimal Pit Lap")
-                ax.set_ylabel("Frequency")
-                ax.set_title("2-Stop Second Stop — second stint compound")
-                ax.legend()
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['2-Stop Second Stop Compound Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+        with c1:
+            fig = make_compound_hist(soft_1stop, med_1stop, hard_1stop,
+                            "1-Stop — opening compound")
+            st.plotly_chart(fig, width="stretch")
+            plot_buffers['1-Stop Stop by Compound'] = io.BytesIO(fig.to_image(format='png'))
+        with c2:
+            fig = make_compound_hist(soft_pit1, med_pit1, hard_pit1,
+                            "2-Stop First Stop — opening compound")
+            st.plotly_chart(fig, width="stretch")
+            plot_buffers['2-Stop First Stop by Compound'] = io.BytesIO(fig.to_image(format='png')) 
+        with c3:
+            fig = make_compound_hist(soft_pit2, med_pit2, hard_pit2,
+                            "2-Stop Second Stop — second stint compound")
+            st.plotly_chart(fig, width="stretch")
+            plot_buffers['2-Stop Second Stop by Compound'] = io.BytesIO(fig.to_image(format='png'))
 
         # =========================================================================
         # COMPOUND DISTRIBUTION PLOTS
         # Bar charts showing which compound combinations won most often.
-        # Labels use first letter abbreviations (S/M/H) to avoid overcrowding x-axis.
-        # Top 6 combos shown to keep charts readable.
         # =========================================================================
         if mobile_mode:
+            c1, c2 = st.container(), st.container()
+        else:
+            c1, c2 = st.columns(2)
+
+        with c1:
             st.subheader("1-Stop Compound Distribution")
             compound_counts_1 = Counter(optimal_compounds_1_stop)
             top_combos = compound_counts_1.most_common(6)
             labels = [f"{c[0][0].upper()}→{c[1][0].upper()}" for c, _ in top_combos]
             values = [v for _, v in top_combos]
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.bar(labels, values)
-            ax.set_xlabel("Compound Combination")
-            ax.set_ylabel("Frequency")
-            ax.set_title(f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['1-Stop Compound Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
+            fig = px.bar(x=labels, y=values,
+                         labels={'x': 'Compound Combination', 'y': 'Frequency'},
+                         title=f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['1-Stop Compound Bar Chart'] = io.BytesIO(fig.to_image(format='png'))
 
+        with c2:
             st.subheader("2-Stop Compound Distribution")
             compound_counts_2 = Counter(optimal_compounds_2_stop)
             top_combos = compound_counts_2.most_common(6)
             labels = [f"{c[0][0].upper()}→{c[1][0].upper()}→{c[2][0].upper()}" for c, _ in top_combos]
             values = [v for _, v in top_combos]
-            fig, ax = plt.subplots(dpi=plot_dpi)
-            ax.bar(labels, values)
-            ax.set_xlabel("Compound Combination")
-            ax.set_ylabel("Frequency")
-            ax.set_title(f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['2-Stop Compound Distribution'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("1-Stop Compound Distribution")
-                compound_counts_1 = Counter(optimal_compounds_1_stop)
-                top_combos = compound_counts_1.most_common(6)
-                labels = [f"{c[0][0].upper()}→{c[1][0].upper()}" for c, _ in top_combos]
-                values = [v for _, v in top_combos]
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.bar(labels, values)
-                ax.set_xlabel("Compound Combination")
-                ax.set_ylabel("Frequency")
-                ax.set_title(f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['1-Stop Compound Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
-
-            with col2:
-                st.subheader("2-Stop Compound Distribution")
-                compound_counts_2 = Counter(optimal_compounds_2_stop)
-                top_combos = compound_counts_2.most_common(6)
-                labels = [f"{c[0][0].upper()}→{c[1][0].upper()}→{c[2][0].upper()}" for c, _ in top_combos]
-                values = [v for _, v in top_combos]
-                fig, ax = plt.subplots(dpi=plot_dpi)
-                ax.bar(labels, values)
-                ax.set_xlabel("Compound Combination")
-                ax.set_ylabel("Frequency")
-                ax.set_title(f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['2-Stop Compound Distribution'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+            fig = px.bar(x=labels, y=values,
+                         labels={'x': 'Compound Combination', 'y': 'Frequency'},
+                         title=f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['2-Stop Compound Bar Chart'] = io.BytesIO(fig.to_image(format='png'))
 
         # =========================================================================
-        # LAP TRACES
-        # Single representative race for the most common 1-stop and 2-stop strategy.
-        # A fresh random SC scenario is generated for each trace — the trace is
-        # illustrative, not a replay of any specific simulation.
-        # Stint backgrounds are color-coded: red=soft, yellow=medium, gray=hard.
+        # LAP TRACES 
+        # Representative race for rank 1 strategy in each table.
         # =========================================================================
         if mobile_mode:
+            c1, c2 = st.container(), st.container()
+        else:
+            c1, c2 = st.columns(2)
+
+        with c1:
             st.subheader("Best 1-Stop Lap Trace")
             fig = plot_single_race_st(config, [best_1stop_pit], best_1stop_compounds)
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['1-Stop Lap Trace'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['1-Stop Lap Trace'] = io.BytesIO(fig.to_image(format='png'))
 
+        with c2:
             st.subheader("Best 2-Stop Lap Trace")
             fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
-            st.pyplot(fig, width='stretch')
-            
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-            buf.seek(0)
-            plot_buffers['2-Stop Lap Trace'] = buf
-            st.session_state['plot_buffers'] = plot_buffers
-            
-            plt.close(fig)
-
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Best 1-Stop Lap Trace")
-                fig = plot_single_race_st(config, [best_1stop_pit], best_1stop_compounds)
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['1-Stop Lap Trace'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
-
-            with col2:
-                st.subheader("Best 2-Stop Lap Trace")
-                fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
-                st.pyplot(fig, width='stretch')
-                
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=plot_dpi, bbox_inches='tight')
-                buf.seek(0)
-                plot_buffers['2-Stop Lap Trace'] = buf
-                st.session_state['plot_buffers'] = plot_buffers
-                
-                plt.close(fig)
+            st.plotly_chart(fig, use_container_width=True)
+            plot_buffers['2-Stop Lap Trace'] = io.BytesIO(fig.to_image(format='png'))
 
         st.subheader("Strategy Tables")
 
         # --- 1-stop table ---
-
         total_1stop_wins = len(winning_strategies_1_stop)
         rows_1 = []
         for (pit, comp), freq in pit_lap_counts_1.most_common(10):
@@ -846,28 +581,13 @@ if 'results' in st.session_state:
                 'Starting Tire': comp[0][0].upper(),
                 'Stop 1': f"Lap {pit} → {comp[1][0].upper()}",
                 'Frequency': freq,
-                'Win Rate': f"{freq/total_1stop_wins*100:.1f}%"
+                'Win Rate': f"{freq/total_1stop_wins*100:.1f}%" if total_1stop_wins > 0 else "N/A"
             })
-            
         df_1stop = pd.DataFrame(rows_1)
         df_1stop.index = range(1, len(df_1stop)+1)
         df_1stop.index.name = 'Rank'
 
-        if mobile_mode:
-            st.write("**Top 10 1-Stop Strategies**")
-            st.write(f"*{len(winning_strategies_1_stop)} total 1-stop wins ({len(winning_strategies_1_stop)/n_simulations*100:.1f}% of simulations)*")
-            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-            st.dataframe(df_1stop, width='stretch')
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write("**Top 10 1-Stop Strategies**")
-                st.write(f"*{len(winning_strategies_1_stop)} total 1-stop wins ({len(winning_strategies_1_stop)/n_simulations*100:.1f}% of simulations)*")
-                st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-                st.dataframe(df_1stop, width='stretch')
-
         # --- 2-stop table ---
-
         total_2stop_wins = len(winning_strategies_2_stop)
         rows_2 = []
         for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
@@ -876,24 +596,28 @@ if 'results' in st.session_state:
                 'Stop 1': f"Lap {pit1} → {comp[1][0].upper()}",
                 'Stop 2': f"Lap {pit2} → {comp[2][0].upper()}",
                 'Frequency': freq,
-                'Win Rate': f"{freq/total_2stop_wins*100:.1f}%"
+                'Win Rate': f"{freq/total_2stop_wins*100:.1f}%" if total_2stop_wins > 0 else "N/A"
             })
-            
         df_2stop = pd.DataFrame(rows_2)
         df_2stop.index = range(1, len(df_2stop)+1)
         df_2stop.index.name = 'Rank'
 
         if mobile_mode:
-            st.write("**Top 10 2-Stop Strategies**")
-            st.write(f"*{len(winning_strategies_2_stop)} total 2-stop wins ({len(winning_strategies_2_stop)/n_simulations*100:.1f}% of simulations)*")
-            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-            st.dataframe(df_2stop, width='stretch')
+            c1, c2 = st.container(), st.container()
         else:
-            with col2:
-                st.write("**Top 10 2-Stop Strategies**")
-                st.write(f"*{len(winning_strategies_2_stop)} total 2-stop wins ({len(winning_strategies_2_stop)/n_simulations*100:.1f}% of simulations)*")
-                st.caption("Win rate = % of wins within this strategy type, not overall race wins")
-                st.dataframe(df_2stop, width='stretch')
+            c1, c2 = st.columns(2)
+
+        with c1:
+            st.write("**Top 10 1-Stop Strategies**")
+            st.write(f"*{total_1stop_wins} total 1-stop wins ({total_1stop_wins/n_simulations*100:.1f}% of simulations)*")
+            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
+            st.dataframe(df_1stop, use_container_width=True)
+
+        with c2:
+            st.write("**Top 10 2-Stop Strategies**")
+            st.write(f"*{total_2stop_wins} total 2-stop wins ({total_2stop_wins/n_simulations*100:.1f}% of simulations)*")
+            st.caption("Win rate = % of wins within this strategy type, not overall race wins")
+            st.dataframe(df_2stop, use_container_width=True)
                 
         csv_1stop = df_1stop.to_csv().encode('utf-8')
         csv_2stop = df_2stop.to_csv().encode('utf-8')
@@ -918,9 +642,11 @@ if 'results' in st.session_state:
             dl_strat_dist    = st.checkbox("Strategy Distribution Plot", value=True)
             dl_1stop_pit     = st.checkbox("1-Stop Pit Lap Distribution", value=True)
             dl_2stop_pit     = st.checkbox("2-Stop Pit Lap Distribution", value=True)
-            dl_1stop_comp    = st.checkbox("1-Stop Compound Distribution", value=True)
-            dl_2stop_comp1    = st.checkbox("2-Stop First Stop Compound Distribution", value=True)
-            dl_2stop_comp2    = st.checkbox("2-Stop Second Stop Compound Distribution", value=True)
+            dl_1stop_comp_hist = st.checkbox("1-Stop Stop by Compound", value=True)
+            dl_2stop_comp1_hist = st.checkbox("2-Stop First Stop by Compound", value=True)
+            dl_2stop_comp2_hist = st.checkbox("2-Stop Second Stop by Compound", value=True)
+            dl_1stop_comp_bar  = st.checkbox("1-Stop Compound Bar Chart", value=True)
+            dl_2stop_comp_bar  = st.checkbox("2-Stop Compound Bar Chart", value=True)
             dl_1stop_trace   = st.checkbox("1-Stop Lap Trace", value=True)
             dl_2stop_trace   = st.checkbox("2-Stop Lap Trace", value=True)
 
@@ -928,9 +654,11 @@ if 'results' in st.session_state:
             'Strategy Distribution':          dl_strat_dist,
             '1-Stop Pit Lap Distribution':    dl_1stop_pit,
             '2-Stop Pit Lap Distribution':    dl_2stop_pit,
-            '1-Stop Compound Distribution':   dl_1stop_comp,
-            '2-Stop First Stop by Compound':  dl_2stop_comp1,
-            '2-Stop Second Stop by Compound': dl_2stop_comp2,
+            '1-Stop Stop by Compound':        dl_1stop_comp_hist,
+            '2-Stop First Stop by Compound':  dl_2stop_comp1_hist,
+            '2-Stop Second Stop by Compound': dl_2stop_comp2_hist,
+            '1-Stop Compound Bar Chart':      dl_1stop_comp_bar,
+            '2-Stop Compound Bar Chart':      dl_2stop_comp_bar,
             '1-Stop Lap Trace':               dl_1stop_trace,
             '2-Stop Lap Trace':               dl_2stop_trace,
         }

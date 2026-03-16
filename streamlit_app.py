@@ -359,20 +359,23 @@ if 'results' in st.session_state:
         # rather than finding them independently (which can give mismatched results).
         from collections import Counter
 
-        # 1-stop representative strategy
-        best_1stop_compounds  = list(Counter(optimal_compounds_1_stop).most_common(1)[0][0])
-        filtered_pit1_1stop   = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop)
-                                if list(c) == best_1stop_compounds]
-        best_1stop_pit        = Counter(filtered_pit1_1stop).most_common(1)[0][0]
+        # 1-stop representative strategy — from actual winners only
+        best_1stop_compounds = list(Counter(
+            [c for _, c in winning_strategies_1_stop]
+        ).most_common(1)[0][0])
 
-        # 2-stop representative strategy
-        best_2stop_compounds  = list(Counter(optimal_compounds_2_stop).most_common(1)[0][0])
-        filtered_pit1         = [p1 for p1, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop)
-                                if list(c) == best_2stop_compounds]
-        filtered_pit2         = [p2 for p2, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop)
-                                if list(c) == best_2stop_compounds]
-        best_2stop_pit1       = Counter(filtered_pit1).most_common(1)[0][0]
-        best_2stop_pit2       = Counter(filtered_pit2).most_common(1)[0][0]
+        filtered_pit1_1stop = [p for p, c in winning_strategies_1_stop if list(c) == best_1stop_compounds]
+        best_1stop_pit = Counter(filtered_pit1_1stop).most_common(1)[0][0]
+
+        # 2-stop representative strategy — from actual winners only
+        best_2stop_compounds = list(Counter(
+            [c for _, _, c in winning_strategies_2_stop]
+        ).most_common(1)[0][0])
+
+        filtered_pit1 = [p1 for p1, p2, c in winning_strategies_2_stop if list(c) == best_2stop_compounds]
+        filtered_pit2 = [p2 for p1, p2, c in winning_strategies_2_stop if list(c) == best_2stop_compounds]
+        best_2stop_pit1 = Counter(filtered_pit1).most_common(1)[0][0]
+        best_2stop_pit2 = Counter(filtered_pit2).most_common(1)[0][0]
 
         # =========================================================================
         # METRICS ROW

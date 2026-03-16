@@ -357,25 +357,24 @@ if 'results' in st.session_state:
         # Step 3: Find most common pit lap within that filtered subset
         # This two-step approach ensures the lap trace compound and pit lap are consistent,
         # rather than finding them independently (which can give mismatched results).
+        # --- Find representative strategies for lap traces ---
+        # Pulled directly from rank 1 of the winning strategy counters
+        # so the lap trace always matches the strategy table exactly.
         from collections import Counter
 
-        # 1-stop representative strategy — from actual winners only
-        best_1stop_compounds = list(Counter(
-            [c for _, c in winning_strategies_1_stop]
-        ).most_common(1)[0][0])
+        pit_lap_counts_1 = Counter(winning_strategies_1_stop)
+        pit_lap_counts_2 = Counter(winning_strategies_2_stop)
 
-        filtered_pit1_1stop = [p for p, c in winning_strategies_1_stop if list(c) == best_1stop_compounds]
-        best_1stop_pit = Counter(filtered_pit1_1stop).most_common(1)[0][0]
+        # 1-stop: use rank 1 from winning strategies
+        top_1stop            = pit_lap_counts_1.most_common(1)[0][0]
+        best_1stop_pit       = top_1stop[0]
+        best_1stop_compounds = list(top_1stop[1])
 
-        # 2-stop representative strategy — from actual winners only
-        best_2stop_compounds = list(Counter(
-            [c for _, _, c in winning_strategies_2_stop]
-        ).most_common(1)[0][0])
-
-        filtered_pit1 = [p1 for p1, p2, c in winning_strategies_2_stop if list(c) == best_2stop_compounds]
-        filtered_pit2 = [p2 for p1, p2, c in winning_strategies_2_stop if list(c) == best_2stop_compounds]
-        best_2stop_pit1 = Counter(filtered_pit1).most_common(1)[0][0]
-        best_2stop_pit2 = Counter(filtered_pit2).most_common(1)[0][0]
+        # 2-stop: use rank 1 from winning strategies
+        top_2stop            = pit_lap_counts_2.most_common(1)[0][0]
+        best_2stop_pit1      = top_2stop[0]
+        best_2stop_pit2      = top_2stop[1]
+        best_2stop_compounds = list(top_2stop[2])
 
         # =========================================================================
         # METRICS ROW
@@ -839,7 +838,6 @@ if 'results' in st.session_state:
         st.subheader("Strategy Tables")
 
         # --- 1-stop table ---
-        pit_lap_counts_1 = Counter(winning_strategies_1_stop)
 
         total_1stop_wins = len(winning_strategies_1_stop)
         rows_1 = []
@@ -869,7 +867,6 @@ if 'results' in st.session_state:
                 st.dataframe(df_1stop, width='stretch')
 
         # --- 2-stop table ---
-        pit_lap_counts_2 = Counter(winning_strategies_2_stop)
 
         total_2stop_wins = len(winning_strategies_2_stop)
         rows_2 = []

@@ -32,7 +32,7 @@ import random
 # CORE SIMULATION FUNCTION
 # =============================================================================
 
-def simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=None):
+def simulate_race(pit_lap1, compounds, race_events, config, pit_lap2=None, dnf=False, dnf_lap=None):
     """
     Simulate a single race for one car given a fixed strategy.
 
@@ -65,6 +65,9 @@ def simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=None):
         Individual lap times for each of the total_laps laps.
         Used for lap trace visualization.
     """
+    
+    if dnf:
+        return {'total_time': np.inf, 'lap_times': [], 'dnf': True, 'dnf_lap': dnf_lap}
 
     total_time = 0
     tire_age = 0       # laps completed on current tire set (resets at each pit)
@@ -114,8 +117,11 @@ def simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=None):
         # --- Base lap time ---
         # Under safety car, all cars slow to ~90s laps regardless of tire state.
         # Under green flag, use the configured base lap time.
-        if sc_laps[laps - 1]:
+        event = race_events[laps - 1]
+        if event == 2:
             current_base = config['sc_base_lap_time']
+        elif event == 1:
+            current_base = config['vsc_base_lap_time']
         else:
             current_base = config['base_lap_time']
 
@@ -129,15 +135,19 @@ def simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=None):
 
         # Add traffic penalty if stuck behind a slower car this lap
         # Traffic doesn't apply under SC since all cars are at the same slow pace
-        if in_traffic and not sc_laps[laps - 1]:
+        if in_traffic and event == 0:
             lap_time += config['traffic_time_loss']
 
         # --- Pit stop logic ---
         if laps in pit_laps:
-            if sc_laps[laps - 1]:
+            if event == 2:
                 # Under safety car: reduced pit loss because all cars are slow
                 # The relative time lost vs cars staying out is much smaller
                 lap_time += config['sc_pit_loss'] + pit_loss_randomness
+            elif event == 1:
+                # Under virtual safety car: some reduced pit loss because all cars are slow
+                # The relative time lost vs cars staying out is a little smaller
+                lap_time += config['vsc_pit_loss'] + pit_loss_randomness
             else:
                 # Normal green flag pit stop: full pit loss time
                 lap_time += config['pit_loss'] + pit_loss_randomness
@@ -153,7 +163,7 @@ def simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=None):
         lap_times.append(lap_time)
 
     total_time = sum(lap_times)
-    return total_time, lap_times
+    return {'total_time': total_time, 'lap_times': lap_times, 'dnf': False, 'dnf_lap': None}
 
 
 # =============================================================================
@@ -193,8 +203,15 @@ def run_simulation(args):
     # Generate safety car events for this simulation
     # This array is shared across ALL strategy evaluations in this simulation
     # so every strategy faces the same SC scenario — apples-to-apples comparison
-    sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
+    sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
 
+    car_dnf = np.random.random() < (config['mechanical_failure_prob'] * config['total_laps'])
+    dnf_count = 1 if car_dnf else 0
+    if car_dnf:
+        dnf_lap = np.random.randint(1, config['total_laps'])
+    else:
+        dnf_lap = None
+    
     results_1_stop = {}      # key: (pit_lap, compounds_tuple) -> total_time
     results_2_stop = {}      # key: (pit_lap1, pit_lap2, compounds_tuple) -> total_time
     lap_times_1_stop = {}    # key: same as above -> lap_times list
@@ -220,14 +237,15 @@ def run_simulation(args):
         # ~1600 pit lap pairs × 15 compound combos = ~24000 calls for 2-stop
         for pit_lap in range(1, config['total_laps'] - 5):
             for c1stop in valid_1stop:
-                results_1_stop[(pit_lap, c1stop)], lap_times_1_stop[(pit_lap, c1stop)] = simulate_race(
-                    pit_lap, c1stop, sc_laps, config)
+                result = simulate_race(pit_lap, c1stop, sc_laps, config, None, dnf=car_dnf, dnf_lap= dnf_lap)
+                results_1_stop[(pit_lap, c1stop)] = result['total_time']
+                lap_times_1_stop[(pit_lap, c1stop)] = result['lap_times']
 
             for pit_lap2 in range(pit_lap + 1, config['total_laps'] - 2):
                 # pit_lap2 > pit_lap enforced to prevent invalid reverse strategies
                 for c2stop in valid_2stop:
-                    results_2_stop[(pit_lap, pit_lap2, c2stop)], _ = simulate_race(
-                        pit_lap, c2stop, sc_laps, config, pit_lap2=pit_lap2)
+                    result = simulate_race(pit_lap, c2stop, sc_laps, config, pit_lap2=pit_lap2, dnf=car_dnf, dnf_lap= dnf_lap)
+                    results_2_stop[(pit_lap, pit_lap2, c2stop)] = result['total_time']
 
     else:
         # Sampled search: randomly draw N strategies instead of evaluating all
@@ -239,20 +257,19 @@ def run_simulation(args):
             n_stops = np.random.choice([1, 2])  # randomly decide 1 or 2 stop
             if n_stops == 1:
                 compounds = random.choice(valid_1stop)
-                results_1_stop[(pit_lap1, compounds)], _ = simulate_race(
-                    pit_lap1, compounds, sc_laps, config)
+                result = simulate_race(pit_lap1, compounds, sc_laps, config)
+                results_1_stop[(pit_lap1, compounds)] = result['total_time']
             else:
                 compounds = random.choice(valid_2stop)
-                results_2_stop[(pit_lap1, pit_lap2, compounds)], _ = simulate_race(
-                    pit_lap1, compounds, sc_laps, config, pit_lap2=pit_lap2)
+                result = simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=pit_lap2)
+                results_2_stop[(pit_lap1, pit_lap2, compounds)] = result['total_time']
 
     # Find the best strategy in each category
     # Guard against empty dicts (possible in sampled mode if all draws were same stop count)
     best_1 = min(results_1_stop, key=results_1_stop.get) if results_1_stop else None
     best_2 = min(results_2_stop, key=results_2_stop.get) if results_2_stop else None
 
-    return results_1_stop[best_1], results_2_stop[best_2], best_1, best_2, lap_times_1_stop, lap_times_2_stop
-
+    return results_1_stop[best_1], results_2_stop[best_2], best_1, best_2, lap_times_1_stop, lap_times_2_stop, dnf_count
 
 # =============================================================================
 # VISUALIZATION: SINGLE RACE LAP TIME TRACE
@@ -277,11 +294,11 @@ def plot_single_race(config, pit_laps, compounds, filename='lap_trace.png'):
     """
 
     # Generate a fresh random race scenario for visualization
-    sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
+    sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
 
-    total_time, lap_times = simulate_race(
-        pit_laps[0], compounds, sc_laps, config,
-        pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+    result = simulate_race( pit_laps[0], compounds, sc_laps, config,
+                pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+    lap_times = result['lap_times']
 
     # Color coding matches real F1 broadcast conventions
     compound_colors = {'soft': 'red', 'medium': 'yellow', 'hard': 'white'}
@@ -311,28 +328,30 @@ def plot_single_race(config, pit_laps, compounds, filename='lap_trace.png'):
 
 
 # =============================================================================
-# SAFETY CAR GENERATOR
+# RACE EVENT GENERATOR
 # =============================================================================
 
-def generate_safety_cars(total_laps, sc_chance):
+def generate_race_events(total_laps, sc_chance, vsc_chance):
     """
-    Generate a boolean array indicating which laps have a safety car.
-
-    Each lap independently has sc_chance probability of SC deployment.
-    e.g. sc_chance=0.008 gives ~0.8% per lap ≈ 50% chance of at least
-    one SC over a 60-lap race.
-
-    Parameters
-    ----------
-    total_laps : int
-    sc_chance : float - probability per lap (0 to 1)
-
-    Returns
-    -------
-    np.ndarray of bool, shape (total_laps,)
+    Generate a race event array for each lap.
+    
+    Returns an integer array where:
+        0 = no event
+        1 = safety car
+        2 = virtual safety car
+        
+    SC and VSC are mutually exclusive per lap
     """
-    return np.random.random(total_laps) < sc_chance
 
+    events = np.zeros(total_laps, dtype=int)
+    
+    for lap in range(total_laps):
+        if np.random.random() < sc_chance:
+            events[lap] = 2 #SC
+        elif np.random.random() < vsc_chance:
+            events[lap] = 1 #VSC
+            
+    return events
 
 # =============================================================================
 # MAIN: CONFIGURATION, SIMULATION LOOP, AND PLOTTING
@@ -359,6 +378,16 @@ def main():
 
         # Lap time under safety car (all cars neutralized to this pace)
         'sc_base_lap_time': 90,
+        
+        # Time lost in pit lane under virtual safety car
+        # Lower because all cars are slow, reducing the relative cost of pitting
+        'vsc_pit_loss': 18,
+
+        # Lap time under virtual safety car (all cars neutralized to this pace)
+        'vsc_base_lap_time': 87,
+        
+        # Probability of crash/mechanical failure per lap
+        'mechanical_failure_prob': 1/200,
 
         # Race distance in laps
         'total_laps': 60,
@@ -366,6 +395,9 @@ def main():
         # Probability of safety car deployment per lap
         # 50/60/100 ≈ 0.0083 gives ~50% chance per race across 60 laps
         'sc_chance': 50 / 60 / 100,
+        
+        # Probability of virtual safety car deployment per lap
+        'vsc_chance': 30 / 60 / 100,
 
         # Traffic model parameters
         'base_traffic_prob': 0.4,    # probability of being in traffic on lap 1 of a stint

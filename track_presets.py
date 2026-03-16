@@ -15,6 +15,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 32,
         'hard_offset': 1.3, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 89,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 2 - March 15
@@ -26,6 +28,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.10, 'soft_max': 12,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 101,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 3 - March 29
@@ -37,6 +41,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.07, 'soft_max': 16,
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 36,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 55,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 99,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 4 - April 12 (may be cancelled)
@@ -48,6 +54,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.12, 'soft_max': 10,  # very high deg
         'med_offset': 0.0,  'med_deg': 0.07, 'med_max': 25,
         'hard_offset': 1.0, 'hard_deg': 0.03, 'hard_max': 45,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 101,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 5 - April 19 (may be cancelled)
@@ -59,6 +67,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.08, 'soft_max': 15,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 32,
         'hard_offset': 1.3, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 45, 'vsc_base_lap_time': 96,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.003,
     },
 
     # Round 6 - May 3
@@ -70,6 +80,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 13,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 98,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 7 - May 24
@@ -81,6 +93,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.08, 'soft_max': 15,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 33,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 52,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 83,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 8 - June 7
@@ -92,6 +106,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.05, 'soft_max': 25,  # low deg, smooth surface
         'med_offset': 0.0,  'med_deg': 0.03, 'med_max': 45,
         'hard_offset': 1.0, 'hard_deg': 0.01, 'hard_max': 70,
+        'vsc_chance_pct': 50, 'vsc_base_lap_time': 82,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.003,
     },
 
     # Round 9 - June 14
@@ -103,6 +119,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 89,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 10 - June 28
@@ -114,6 +132,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 74,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 11 - July 5
@@ -125,6 +145,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.08, 'soft_max': 16,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 34,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 52,
+        'vsc_chance_pct': 35, 'vsc_base_lap_time': 98,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.0023,
     },
 
     # Round 12 - July 19
@@ -136,6 +158,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.07, 'soft_max': 18,
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 36,
         'hard_offset': 1.0, 'hard_deg': 0.02, 'hard_max': 55,
+        'vsc_chance_pct': 40, 'vsc_base_lap_time': 113,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.0027,
     },
 
     # Round 13 - July 26
@@ -147,6 +171,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.08, 'soft_max': 15,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 32,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 25, 'vsc_base_lap_time': 87,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.001,
     },
 
     # Round 14 - August (TBC - Dutch GP last year before removal)
@@ -158,6 +184,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.10, 'soft_max': 12,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 28,
         'hard_offset': 1.2, 'hard_deg': 0.03, 'hard_max': 45,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 79,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 15 - September 13
@@ -169,6 +197,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 96,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 16 - September 26 (Saturday race)
@@ -180,6 +210,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.07, 'soft_max': 20,
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 38,
         'hard_offset': 1.0, 'hard_deg': 0.02, 'hard_max': 58,
+        'vsc_chance_pct': 50, 'vsc_base_lap_time': 112,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.0027,
     },
 
     # Round 17 - October 11
@@ -191,6 +223,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.06, 'soft_max': 22,
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 40,
         'hard_offset': 1.0, 'hard_deg': 0.02, 'hard_max': 60,
+        'vsc_chance_pct': 55, 'vsc_base_lap_time': 107,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.003,
     },
 
     # Round 18 - October 25
@@ -202,6 +236,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 104,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 19 - November 1
@@ -213,6 +249,8 @@ TRACK_PRESETS = {
         'soft_offset': -0.8, 'soft_deg': 0.07, 'soft_max': 18,  # high altitude = less deg
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 38,
         'hard_offset': 1.0, 'hard_deg': 0.02, 'hard_max': 58,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 87,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 20 - November 8
@@ -224,6 +262,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.09, 'soft_max': 14,
         'med_offset': 0.0,  'med_deg': 0.06, 'med_max': 30,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 79,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 21 - November 21 (Saturday race)
@@ -235,6 +275,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.06, 'soft_max': 22,  # low deg, smooth surface
         'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 40,
         'hard_offset': 1.0, 'hard_deg': 0.02, 'hard_max': 60,
+        'vsc_chance_pct': 40, 'vsc_base_lap_time': 102,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.0023,
     },
 
     # Round 22 - November 29
@@ -246,6 +288,8 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.11, 'soft_max': 11,  # very high deg
         'med_offset': 0.0,  'med_deg': 0.07, 'med_max': 26,
         'hard_offset': 1.0, 'hard_deg': 0.03, 'hard_max': 44,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 91,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
     # Round 23 - December 6
@@ -257,5 +301,7 @@ TRACK_PRESETS = {
         'soft_offset': -1.0, 'soft_deg': 0.08, 'soft_max': 16,
         'med_offset': 0.0,  'med_deg': 0.05, 'med_max': 33,
         'hard_offset': 1.2, 'hard_deg': 0.02, 'hard_max': 52,
+        'vsc_chance_pct': 25, 'vsc_base_lap_time': 94,
+        'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.001,
     },
 }

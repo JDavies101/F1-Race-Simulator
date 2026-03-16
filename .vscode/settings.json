@@ -1,15 +1,24 @@
 {
     "cSpell.words": [
+        "axvline",
+        "axvspan",
         "barmode",
+        "dnfs",
         "hovertemplate",
+        "linestyle",
         "nbins",
         "nbinsx",
         "royalblue",
         "selectbox",
         "strat",
         "vline",
+        "vlines",
         "vrect",
         "xaxis",
-        "yaxis"
+        "xbins",
+        "xlabel",
+        "yaxis",
+        "ylabel",
+        "ylim"
     ]
 }

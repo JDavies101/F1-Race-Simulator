@@ -33,7 +33,7 @@ import pandas as pd
 import io
 import zipfile
 from collections import Counter, defaultdict
-from monte_carlo_medium_v1 import simulate_race, run_simulation, generate_safety_cars
+from monte_carlo import simulate_race, run_simulation, generate_race_events
 from track_presets import TRACK_PRESETS
 
 # -----------------------------------------------------------------------------
@@ -101,7 +101,16 @@ with st.sidebar.expander("Traffic & Safety Car Settings"):
                                   st.session_state.get('sc_pit_loss', 12), key="sc_pit_loss")
     sc_base_lap_time  = st.slider("SC lap time (s)", 80, 120,
                                   st.session_state.get('sc_base_lap_time', 90), key="sc_lap_time")
-
+    vsc_chance_pct    = st.slider("VSC chance (%)", 0, 100, 
+                                  st.session_state.get('vsc_chance_pct', 30), key='vsc_chance_pct')
+    vsc_pit_loss      = st.slider("VSC pit loss (s)", 5, 25,
+                                  st.session_state.get('vsc_pit_loss', 18), key='vsc_pit_loss')
+    vsc_base_lap_time = st.slider("VSC lap time (s)", 80, 120,
+                                  st.session_state.get('vsc_base_lap_time', 87), key='vsc_lap_time')
+    mechanical_failure_prob = st.slider("Mechanical failure probability (per lap)", 0.000, 0.020,
+                                        st.session_state.get('mechanical_failure_prob', 0.005),
+                                        step=0.001, format="%.3f", key='mechanical_failure_prob')
+    
 # --- App description ---
 st.markdown("""
 This simulator uses **Monte Carlo methods** to find the optimal pit stop strategy for an F1 race.
@@ -148,9 +157,13 @@ config = {
     'base_lap_time':     base_lap_time,
     'pit_loss':          pit_loss,
     'sc_pit_loss':       sc_pit_loss,
+    'vsc_pit_loss':      vsc_pit_loss,
     'sc_base_lap_time':  sc_base_lap_time,
+    'vsc_base_lap_time': vsc_base_lap_time,
     'total_laps':        total_laps,
     'sc_chance':         sc_chance_pct / total_laps / 100,
+    'vsc_chance':        vsc_chance_pct / total_laps / 100,
+    'mechanical_failure_prob': mechanical_failure_prob,
     'base_traffic_prob': base_traffic_prob,
     'spread_rate':       spread_rate,
     'traffic_time_loss': traffic_time_loss,
@@ -190,10 +203,14 @@ def plot_single_race_st(config, pit_laps, compounds):
     -------
     fig : plotly Figure
     """
-    sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
-    _, lap_times = simulate_race(
-        pit_laps[0], compounds, sc_laps, config,
-        pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+    
+    for _ in range(20):
+        sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
+        result = simulate_race(pit_laps[0], compounds, sc_laps, config,
+                    pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+        if not result['dnf']:
+            break
+    lap_times = result['lap_times']
 
     compound_colors = {'soft': 'red', 'medium': 'yellow', 'hard': 'gray'}
     stint_boundaries = [0] + pit_laps + [config['total_laps']]
@@ -301,8 +318,11 @@ if 'results' in st.session_state:
         best_times_2_stop         = []
         winning_strategies_1_stop = []  # only when 1-stop beat 2-stop overall
         winning_strategies_2_stop = []  # only when 2-stop beat 1-stop overall
+        
+        total_dnfs = 0
 
-        for best_time_1, best_time_2, best_1, best_2, _, _ in sim_results:
+        for best_time_1, best_time_2, best_1, best_2, _, _, dnf_count in sim_results:
+            total_dnfs += dnf_count
             pit1, c1         = best_1
             pit2a, pit2b, c2 = best_2
             best = min([(best_time_1, '1-stop', best_1),
@@ -369,12 +389,13 @@ if 'results' in st.session_state:
             st.write("Avg Best 1-Stop Time", f"{avg_time_1stop:.1f}s")
             st.write("Avg Best 2-Stop Time", f"{avg_time_2stop:.1f}s")
         else:
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
             col1.metric("Most Common Strategy",  most_common_strategy)
             col2.metric("1-Stop Win Rate",        f"{optimal_laps.count('1-stop')}/{n_simulations}")
             col3.metric("2-Stop Win Rate",        f"{optimal_laps.count('2-stop')}/{n_simulations}")
             col4.metric("Avg Best 1-Stop Time",   f"{avg_time_1stop:.1f}s")
             col5.metric("Avg Best 2-Stop Time",   f"{avg_time_2stop:.1f}s")
+            col6.metric("Total DNFs", total_dnfs)
 
         # =========================================================================
         # STRATEGY SUMMARY
@@ -542,9 +563,13 @@ if 'results' in st.session_state:
             ('1-Stop Lap Trace', [best_1stop_pit], best_1stop_compounds),
             ('2-Stop Lap Trace', [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
         ]:
-            sc_laps = generate_safety_cars(config['total_laps'], config['sc_chance'])
-            _, lap_times = simulate_race(pit_laps[0], compounds, sc_laps, config,
+            for _ in range(20):
+                sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
+                result = simulate_race(pit_laps[0], compounds, sc_laps, config,
                                          pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+                if not result['dnf']:
+                    break
+            lap_times = result['lap_times']
             stint_boundaries = [0] + pit_laps + [config['total_laps']]
             fig_mpl, ax = plt.subplots(dpi=plot_dpi)
             ax.plot(range(1, config['total_laps'] + 1), lap_times, color='royalblue')

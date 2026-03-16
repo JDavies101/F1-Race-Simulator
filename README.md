@@ -1,6 +1,6 @@
 # F1 Race Strategy Simulator
 
-A Monte Carlo race strategy simulator for Formula 1, built in Python with an interactive Streamlit web interface. Given a set of race parameters, the simulator runs thousands of randomised race scenarios in parallel to produce a statistical distribution of optimal pit stop strategies — reflecting the uncertainty real strategists face on race day.
+A Monte Carlo race strategy simulator for Formula 1, built in Python with an interactive Streamlit web interface. Given a set of race parameters, the simulator runs thousands of randomized race scenarios in parallel to produce a statistical distribution of optimal pit stop strategies — reflecting the uncertainty real strategists face on race day.
 
 **[Live Demo →](https://f1-race-simulator.streamlit.app/)**
 
@@ -8,7 +8,7 @@ A Monte Carlo race strategy simulator for Formula 1, built in Python with an int
  
 ## What it does
  
-Real F1 strategy is not deterministic — safety cars, traffic, and tire variability mean the "optimal" pit lap changes race to race. This simulator models that uncertainty by running N Monte Carlo simulations, each with randomised events, and asking: *across all of these scenarios, which strategy wins most often?*
+Real F1 strategy is not deterministic — safety cars, traffic, and tire variability mean the "optimal" pit lap changes race to race. This simulator models that uncertainty by running N Monte Carlo simulations, each with randomized events, and asking: *across all of these scenarios, which strategy wins most often?*
  
 Each simulation:
 1. Generates a random safety car schedule for the race
@@ -22,7 +22,7 @@ After N simulations, the output is a **distribution** of optimal strategies rath
 ## Features
  
 - **Parallel simulation** via Python `ProcessPoolExecutor`, scaling across available CPU cores with a real-time progress bar in the web interface
-- **Lap-by-lap physics model** with compound-specific degradation rates, triple-rate cliff behaviour past maximum tire life, and exponential traffic decay as the field spreads over a stint
+- **Lap-by-lap physics model** with compound-specific degradation rates, triple-rate cliff behavior past maximum tire life, and exponential traffic decay as the field spreads over a stint
 - **Safety car model** with per-lap deployment probability and reduced pit delta under yellow flag conditions
 - **1-stop and 2-stop strategy comparison** across all valid tire compound combinations, with the F1 regulation minimum 2-compound requirement enforced automatically
 - **Exhaustive or sampled search** — evaluate every possible pit lap and compound combination, or randomly sample N strategies for faster interactive use
@@ -85,7 +85,7 @@ This runs 1000 simulations with the default config and saves plots as PNG files.
 | `sc_pit_loss` | Time lost in pit lane under safety car (s) |
 | `sc_chance` | Safety car probability per race (%) |
 | `deg_rate` | Tire degradation — seconds of lap time added per lap of tire age |
-| `max_laps` | Tire age beyond which degradation triples (cliff behaviour) |
+| `max_laps` | Tire age beyond which degradation triples (cliff behavior) |
 | `lap_time_offset` | Speed vs medium baseline (negative = faster) |
 | `base_traffic_prob` | Probability of being in traffic at start of stint |
 | `spread_rate` | Rate at which field spreads out over a stint (higher = slower decay) |
@@ -93,19 +93,36 @@ This runs 1000 simulations with the default config and saves plots as PNG files.
 
 ---
 
-## Limitations & Future Work
-
+## Roadmap
+ 
+**Tier 1 — Near term**
+- Virtual safety car — partial speed reduction with smaller pit delta than full SC
+- Crash/mechanical failure — per-lap DNF probability removing car from race
+- Fuel load effect — linear lap time improvement as fuel burns off (~0.03s/lap)
+ 
+**Tier 2 — Medium term**
+- Dynamic weather — dry/damp/wet state machine with transition probabilities, affecting base lap time and deg rates
+- Dynamic track temperature — correlated with weather, affects grip and deg rates
+- Track rubbering in — grip evolution curve over race distance, resets under rain
+ 
+**Tier 3 — Longer term**
+- Per-tire degradation rates — separate front left/right/rear deg rates per compound per circuit
+- Multi-car simulation — 20 cars each with independent strategies, enabling realistic traffic modelling
+- Higher fidelity tire model — thermal model, graining, blistering, following from per-tire deg
+ 
+---
+ 
+## Limitations
+ 
 - Single-car model — does not simulate multi-car interactions or undercut/overcut dynamics
 - Tire parameters are approximations, not sourced from real telemetry data
 - Safety car timing is randomly distributed per lap rather than event-triggered
-- Potential future additions: virtual safety car, reliability failures, real tire compound data, multi-car simulation
  
 ---
 
 ## Author
 
-Jake Davies — Aerospace Engineering MS, Auburn University  
-Research focus: Rotating Detonation Rocket Engines, acoustic eigenfrequency analysis  
+Jake Davies — Aerospace Engineering MS, Auburn University   
 [LinkedIn](https://www.linkedin.com/in/jacob-davies/) · [GitHub](https://github.com/JDavies101)
 
 ---

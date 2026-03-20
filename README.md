@@ -69,7 +69,7 @@ requirements.txt          # Python dependencies
 The simulator can also be run directly without Streamlit:
 
 ```bash
-python monte_carlo_medium_v1.py
+python monte_carlo.py
 ```
 
 This runs 1000 simulations with the default config and saves plots as PNG files. Edit the `config` dict in `main()` to change parameters.

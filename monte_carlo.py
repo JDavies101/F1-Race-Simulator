@@ -294,10 +294,12 @@ def plot_single_race(config, pit_laps, compounds, filename='lap_trace.png'):
     """
 
     # Generate a fresh random race scenario for visualization
-    sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
-
-    result = simulate_race( pit_laps[0], compounds, sc_laps, config,
-                pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+    for _ in range(20):
+        sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
+        result = simulate_race(pit_laps[0], compounds, sc_laps, config,
+                            pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
+        if not result['dnf']:
+            break
     lap_times = result['lap_times']
 
     # Color coding matches real F1 broadcast conventions
@@ -347,9 +349,9 @@ def generate_race_events(total_laps, sc_chance, vsc_chance):
     
     for lap in range(total_laps):
         if np.random.random() < sc_chance:
-            events[lap] = 2 #SC
+            events[lap] = 1 #SC
         elif np.random.random() < vsc_chance:
-            events[lap] = 1 #VSC
+            events[lap] = 2 #VSC
             
     return events
 
@@ -458,7 +460,9 @@ def main():
     # RESULTS PROCESSING
     # Unpack each simulation's results and determine the overall winning strategy
     # -------------------------------------------------------------------------
-    for best_time_1, best_time_2, best_1, best_2, lap_times_1_stop, lap_times_2_stop in sim_results:
+    total_dnfs = 0
+    for best_time_1, best_time_2, best_1, best_2, lap_times_1_stop, lap_times_2_stop, dnf_count in sim_results:
+        total_dnfs += dnf_count
 
         # Unpack strategy keys into readable variables
         pit1, c1 = best_1          # e.g. pit1=20, c1=('soft','medium')
@@ -512,6 +516,7 @@ def main():
     print(f"Avg best 2-stop time: {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
     print(f"Best 1-stop: pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
     print(f"Best 2-stop: pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
+    print(f"Total DNFs: {total_dnfs} ({total_dnfs/n_simulations*100:.1f}% of simulations)")
 
     # -------------------------------------------------------------------------
     # PLOTS

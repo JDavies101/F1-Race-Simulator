@@ -1,0 +1,7 @@
+# plots saved by python monte_carlo.py
+lap_trace*.png
+monte_carlo_dist_*.png
+pit_lap_by_compound.png
+
+__pycache__/
+.vscode/

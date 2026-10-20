@@ -6,7 +6,7 @@
 import numpy as np
 import pytest
 
-from monte_carlo import (compound_label, generate_race_events, race_totals,
+from monte_carlo import (calm_optimum, compound_label, generate_race_events, race_totals,
                          run_simulation, simulate_race, summarize)
 
 LAPS = 6
@@ -120,6 +120,47 @@ def test_no_traffic_loss_under_safety_car():
     result = simulate_race(3, ('medium', 'hard'), events, config, noise=no_noise(traffic=0.45))
     assert result['lap_times'][0] == pytest.approx(90.0)   # SC lap, no +1.0 traffic
     assert result['lap_times'][1] == pytest.approx(81.05)  # green lap, still in traffic
+
+
+def test_fuel_effect_slows_heavy_laps():
+    # 0.1s per lap of fuel left after this lap: +0.5 on lap 1 down to 0 on lap 6
+    config = small_config(fuel_effect=0.1)
+    result = simulate_race(3, ('medium', 'hard'), GREEN, config, noise=no_noise())
+    assert result['lap_times'] == pytest.approx([80.5, 80.45, 100.40, 81.22, 81.14, 81.06])
+
+
+def test_fuel_effect_not_applied_under_safety_car():
+    events = GREEN.copy()
+    events[0] = 2
+    config = small_config(fuel_effect=0.1)
+    result = simulate_race(3, ('medium', 'hard'), events, config, noise=no_noise())
+    assert result['lap_times'][0] == pytest.approx(90.0)
+    assert result['lap_times'][1] == pytest.approx(80.45)
+
+
+def test_fuel_wear_adds_tire_wear_on_full_tank():
+    # fuel left (6 - lap) / 5 is 1, .8, .6, .4, .2, 0, so wear per lap is
+    # 1.5, 1.4, 1.3, 1.2, 1.1, 1.0. wear before each lap: 0, 1.5, 2.9, then
+    # after the stop on lap 3: 1, 2.2, 3.3
+    config = small_config(fuel_wear=0.5)
+    result = simulate_race(3, ('medium', 'hard'), GREEN, config, noise=no_noise())
+    assert result['lap_times'] == pytest.approx([80.0, 80.075, 80.145 + 20, 81.02, 81.044, 81.066])
+
+
+def test_dirty_air_adds_tire_wear_in_traffic():
+    # traffic on laps 1, 2, 4, 5 (see the traffic test above), so wear per lap
+    # is 2, 2, 1, 2, 2, 1 and wear before each lap is 0, 2, 4, then 1, 3, 5
+    config = small_config(base_traffic_prob=0.5, dirty_air_wear=1.0)
+    result = simulate_race(3, ('medium', 'hard'), GREEN, config, noise=no_noise(traffic=0.45))
+    assert result['lap_times'] == pytest.approx([81.0, 81.10, 80.20 + 20, 82.02, 82.06, 81.10])
+
+
+def test_cliff_uses_wear_not_laps():
+    # soft max_laps is 2. lap 3 is only 2 laps old, but with fuel wear it has
+    # 2.9 laps of wear, so it's past the cliff: 79 + 0.3 * 2.9
+    config = small_config(fuel_wear=0.5)
+    result = simulate_race(5, ('soft', 'medium'), GREEN, config, noise=no_noise())
+    assert result['lap_times'][2] == pytest.approx(79.87)
 
 
 def test_dnf_returns_inf_and_no_laps():
@@ -268,6 +309,16 @@ def test_exhaustive_finds_fastest_two_stop(monkeypatch):
     _, best_time_2, _, best_2, _ = run_simulation((config, 0))
     assert best_time_2 == pytest.approx(min(times.values()))
     assert times[best_2] == pytest.approx(best_time_2)
+
+
+@pytest.mark.parametrize('extra', [{}, {'fuel_wear': 0.3, 'fuel_effect': 0.03}])
+def test_calm_optimum_is_fastest_on_calm_race(extra):
+    config = sim_config(**extra)
+    one_times = all_times(config, two_stop=False)
+    two_times = all_times(config, two_stop=True)
+    best_1, best_2 = calm_optimum(config)
+    assert one_times[best_1] == pytest.approx(min(one_times.values()))
+    assert two_times[best_2] == pytest.approx(min(two_times.values()))
 
 
 def test_sampled_two_stop_close_to_fastest(monkeypatch):

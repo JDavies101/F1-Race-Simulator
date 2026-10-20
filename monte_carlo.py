@@ -28,8 +28,12 @@ def lap_times_batch(strategies, race_events, config, noise):
     Returns an array of shape (len(strategies), total_laps).
 
     Each row is worked out the same way as running the race lap by lap:
-    tire age resets to 1 the lap after a stop, and the pit lap itself still
-    counts as part of the old stint.
+    tire wear resets to 1 lap's worth the lap after a stop, and the pit lap
+    itself still counts as part of the old stint.
+
+    Tires wear by 1 lap's worth per lap, plus extra on a heavy fuel load
+    (fuel_wear) and when stuck in traffic (dirty_air_wear). Deg and the
+    cliff work off that wear rather than plain laps.
     """
     total_laps = config['total_laps']
     names = list(config['compound_data'])
@@ -48,22 +52,34 @@ def lap_times_batch(strategies, race_events, config, noise):
     lap = np.arange(1, total_laps + 1)
     stint = (lap > pit1).astype(int) + (lap > pit2)
     last_pit = np.where(lap > pit2, pit2, np.where(lap > pit1, pit1, 0))
-    tire_age = np.where(last_pit > 0, lap - last_pit, lap - 1)
     stint_lap = np.where(last_pit > 0, lap - last_pit - 1, lap - 1)
-
-    c = np.take_along_axis(comps, stint, axis=1)
-    # past max_laps the tire falls off and deg triples
-    deg = np.where(tire_age > max_laps[c], degs[c] * 3, degs[c])
-
     events = np.asarray(race_events)
-    base = np.where(events == 2, config['sc_base_lap_time'],
-                    np.where(events == 1, config['vsc_base_lap_time'], config['base_lap_time']))
-    times = base + offsets[c] + (deg + noise['deg']) * tire_age
 
     # traffic chance is highest right after a stop and drops off as the field spreads.
-    # no traffic loss under SC/VSC since everyone is going the same speed
+    # no traffic under SC/VSC since everyone is going the same speed
     traffic_prob = config['base_traffic_prob'] * np.exp(-stint_lap / config['spread_rate'])
     in_traffic = (noise['traffic'] < traffic_prob) & (events == 0)
+
+    # wear added each lap: 1 lap's worth, more on a full tank and in dirty air
+    fuel_left = (total_laps - lap) / (total_laps - 1)   # 1 on lap 1, 0 on the last lap
+    wear_step = (1 + config.get('fuel_wear', 0) * fuel_left
+                 + config.get('dirty_air_wear', 0) * in_traffic)
+    wear_after = np.cumsum(wear_step, axis=1)   # since the start of the race
+    wear_before = wear_after - wear_step
+    wear_at_stop = np.take_along_axis(wear_after, np.maximum(last_pit - 1, 0), axis=1)
+    wear = np.where(last_pit > 0, 1 + wear_before - wear_at_stop, wear_before)
+
+    c = np.take_along_axis(comps, stint, axis=1)
+    # past max_laps of wear the tire falls off and deg triples
+    deg = np.where(wear > max_laps[c], degs[c] * 3, degs[c])
+
+    base = np.where(events == 2, config['sc_base_lap_time'],
+                    np.where(events == 1, config['vsc_base_lap_time'], config['base_lap_time']))
+    times = base + offsets[c] + (deg + noise['deg']) * wear
+
+    # heavier car is slower, only on green laps since SC/VSC set the pace
+    fuel_pace = config.get('fuel_effect', 0) * (total_laps - lap)
+    times = np.where(events == 0, times + fuel_pace, times)
     times = np.where(in_traffic, times + config['traffic_time_loss'], times)
 
     # pitting is cheaper under SC/VSC since the field is slowed down
@@ -106,6 +122,34 @@ def simulate_race(pit_lap1, compounds, race_events, config, pit_lap2=None,
     return {'total_time': sum(lap_times.tolist()), 'lap_times': lap_times.tolist(), 'dnf': False, 'dnf_lap': None}
 
 
+def valid_compounds(config):
+    """1-stop and 2-stop compound combos, the rules require at least 2 different compounds."""
+    names = list(config['compound_data'].keys())
+    valid_1stop = [(c1, c2) for c1, c2 in product(names, repeat=2) if c1 != c2]
+    valid_2stop = [(c1, c2, c3) for c1, c2, c3 in product(names, repeat=3)
+                   if len(set([c1, c2, c3])) >= 2]
+    return valid_1stop, valid_2stop
+
+
+def calm_optimum(config):
+    """
+    Best 1-stop and 2-stop on a race with no SC/VSC, traffic or noise,
+    searching every strategy. A reference point for the histograms.
+
+    Returns (best_1, best_2) in the same form as run_simulation.
+    """
+    laps = config['total_laps']
+    green = np.zeros(laps, dtype=int)
+    calm = {'pit': np.zeros(laps), 'deg': np.zeros(laps), 'traffic': np.ones(laps)}
+    valid_1stop, valid_2stop = valid_compounds(config)
+
+    ones = [(p, c) for p in range(1, laps - 5) for c in valid_1stop]
+    twos = [(p1, p2, c) for p1 in range(1, laps - 5) for p2 in range(p1 + 1, laps - 2) for c in valid_2stop]
+    t1 = race_totals([(p, None, c) for p, c in ones], green, config, calm)
+    t2 = race_totals(twos, green, config, calm)
+    return ones[int(np.argmin(t1))], twos[int(np.argmin(t2))]
+
+
 def run_simulation(args):
     """
     One Monte Carlo run. Makes a random race (SC/VSC laps, possible DNF),
@@ -143,12 +187,7 @@ def run_simulation(args):
             totals = race_totals([(p1, p2, comps) for p1, p2, comps in new], sc_laps, config, noise, car_dnf)
             results_2_stop.update(zip(new, totals.tolist()))
 
-    compound_names = list(config['compound_data'].keys())
-
-    # rules require at least 2 different compounds
-    valid_1stop = [(c1, c2) for c1, c2 in product(compound_names, repeat=2) if c1 != c2]
-    valid_2stop = [(c1, c2, c3) for c1, c2, c3 in product(compound_names, repeat=3)
-                   if len(set([c1, c2, c3])) >= 2]
+    valid_1stop, valid_2stop = valid_compounds(config)
 
     noise = make_noise(config['total_laps'], rng)
 
@@ -341,6 +380,10 @@ def main():
         'base_traffic_prob': 0.4,    # traffic chance on the first lap of a stint
         'spread_rate': 15,           # higher = traffic clears slower
         'traffic_time_loss': 0.5,    # s per lap stuck in traffic
+        'dirty_air_wear': 0.5,       # extra laps of tire wear per lap in traffic
+
+        'fuel_effect': 0.03,         # s per lap slower for each lap of fuel on board
+        'fuel_wear': 0.3,            # extra tire wear on a full tank, fades to 0 by the end
 
         # offset is vs medium (negative = faster), deg is s per lap of tire age,
         # max_laps is where the cliff starts
@@ -366,6 +409,7 @@ def main():
                 sys.stdout.flush()
 
     s = summarize(sim_results, config['total_laps'])
+    calm_1, calm_2 = calm_optimum(config)
     n_finished = s['n_finished']
 
     (rep_1_pits, rep_1_comps), (rep_2_pits, rep_2_comps) = s['rep_1'], s['rep_2']
@@ -399,7 +443,7 @@ def main():
     plt.xlabel("Optimal Pit Lap")
     plt.ylabel("Frequency")
     plt.title(f"Best 1-Stop Pit Lap Distribution {title_end}")
-    plt.axvline(x=(config['total_laps'] / 2), color='red', linestyle='--', label='Deterministic optimum')
+    plt.axvline(x=calm_1[0], color='red', linestyle='--', label='Best with no SC, traffic or noise')
     plt.legend()
     plt.savefig('monte_carlo_dist_medium_v1_1_stop.png', dpi=450, bbox_inches='tight')
     plt.close()
@@ -409,10 +453,8 @@ def main():
     plt.xlabel("Optimal Pit Lap")
     plt.ylabel("Frequency")
     plt.title(f"Best 2-Stop Pit Lap Distribution {title_end}")
-    plt.axvline(x=(config['total_laps'] / 3), color='red', linestyle='--',
-                label='Deterministic optimum, stop 1')
-    plt.axvline(x=(2 * config['total_laps'] / 3), color='red', linestyle='--',
-                label='Deterministic optimum, stop 2')
+    plt.axvline(x=calm_2[0], color='red', linestyle='--', label='Best with no SC, traffic or noise, stop 1')
+    plt.axvline(x=calm_2[1], color='orange', linestyle='--', label='Best with no SC, traffic or noise, stop 2')
     plt.legend()
     plt.savefig('monte_carlo_dist_medium_v1_2_stop.png', dpi=450, bbox_inches='tight')
     plt.close()

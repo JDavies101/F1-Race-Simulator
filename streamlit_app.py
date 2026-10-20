@@ -13,7 +13,8 @@ import pandas as pd
 import io
 import zipfile
 from collections import Counter
-from monte_carlo import simulate_race, run_simulation, generate_race_events, summarize, compound_label
+from monte_carlo import (simulate_race, run_simulation, generate_race_events, summarize,
+                         compound_label, calm_optimum)
 from track_presets import TRACK_PRESETS
 
 # has to be the first Streamlit call
@@ -61,6 +62,12 @@ with st.sidebar.expander("Compound Settings"):
     hard_deg    = st.slider("Deg rate", 0.01, 0.10, st.session_state.get('hard_deg', 0.02), step=0.01, key="hard_deg")
     hard_max    = st.slider("Max laps", 30, 70, st.session_state.get('hard_max', 50), key="hard_max")
 
+with st.sidebar.expander("Fuel Settings"):
+    fuel_effect = st.slider("Fuel effect (s per lap of fuel)", 0.0, 0.10,
+                            st.session_state.get('fuel_effect', 0.03), step=0.01, key='fuel_effect')
+    fuel_wear   = st.slider("Full tank tire wear (extra laps per lap)", 0.0, 1.0,
+                            st.session_state.get('fuel_wear', 0.3), step=0.05, key='fuel_wear')
+
 with st.sidebar.expander("Traffic & Safety Car Settings"):
     base_traffic_prob = st.slider("Base traffic probability", 0.0, 1.0,
                                   st.session_state.get('base_traffic_prob', 0.4), step=0.05, key="base_traffic_prob")
@@ -68,6 +75,8 @@ with st.sidebar.expander("Traffic & Safety Car Settings"):
                                   st.session_state.get('spread_rate', 15), key="spread_rate")
     traffic_time_loss = st.slider("Traffic time loss (s)", 0.1, 2.0,
                                   st.session_state.get('traffic_time_loss', 0.5), step=0.1, key="traffic_loss")
+    dirty_air_wear    = st.slider("Dirty air tire wear (extra laps per lap in traffic)", 0.0, 2.0,
+                                  st.session_state.get('dirty_air_wear', 0.5), step=0.1, key='dirty_air_wear')
     sc_pit_loss       = st.slider("SC pit loss (s)", 5, 20,
                                   st.session_state.get('sc_pit_loss', 12), key="sc_pit_loss")
     sc_base_lap_time  = st.slider("SC lap time (s)", 80, 120,
@@ -90,7 +99,7 @@ a *distribution* of optimal strategies, reflecting the uncertainty real strategi
 
 with st.expander("How it works"):
     st.markdown("""
-    **The core idea**
+    **The core idea**  
     Every F1 race is different. Safety cars, traffic, and tire variability mean the "optimal" pit lap
     changes from race to race. Instead of finding one answer, this simulator asks: *across thousands
     of random scenarios, which strategy wins most often?*
@@ -100,18 +109,24 @@ with st.expander("How it works"):
     2. Evaluates candidate pit strategies against that scenario
     3. Records the best 1-stop and 2-stop strategy
 
-    **Tire model**
+    **Tire model**  
     Each compound has a lap time offset vs the medium baseline, a degradation rate (seconds lost per lap),
-    and a cliff: the age beyond which degradation triples, modelling real grip drop-off behavior.
+    and a cliff: the wear beyond which degradation triples, modelling real grip drop-off behavior.
+    Tires normally wear one lap's worth per lap, but wear faster on a heavy fuel load and in dirty air.
 
-    **Traffic model**
+    **Fuel**  
+    The car starts heavy and gets faster as fuel burns off. A full tank also wears the tires faster,
+    which makes early stints more expensive.
+
+    **Traffic model**  
     After a pit stop, a car rejoins in traffic. The probability of being held up decays exponentially
-    as the field spreads out over the stint, resetting at each stop.
+    as the field spreads out over the stint, resetting at each stop. Laps in traffic cost time and
+    extra tire wear from running in dirty air.
 
-    **Safety car**
+    **Safety car**  
     SC events reduce the effective pit loss, since pitting under yellow is cheaper relative to cars staying out.
 
-    **How to use it**
+    **How to use it**  
     1. Select a track preset from the sidebar or set parameters manually
     2. Adjust tire compounds, traffic, and SC settings if desired
     3. Choose number of simulations (more = smoother results, slower runtime)
@@ -133,6 +148,9 @@ config = {
     'base_traffic_prob': base_traffic_prob,
     'spread_rate':       spread_rate,
     'traffic_time_loss': traffic_time_loss,
+    'dirty_air_wear':    dirty_air_wear,
+    'fuel_effect':       fuel_effect,
+    'fuel_wear':         fuel_wear,
     'compound_data': {
         'soft':   {'lap_time_offset': soft_offset, 'deg_rate': soft_deg, 'max_laps': soft_max},
         'medium': {'lap_time_offset': med_offset,  'deg_rate': med_deg,  'max_laps': med_max},
@@ -254,6 +272,7 @@ if 'results' in st.session_state:
         (best_1stop_pits, best_1stop_compounds) = s['rep_1']
         (best_2stop_pits, best_2stop_compounds) = s['rep_2']
         avg_time_1stop, avg_time_2stop = s['avg_time_1'], s['avg_time_2']
+        calm_1, calm_2 = calm_optimum(config)
 
         # Metrics
         if mobile_mode:
@@ -262,6 +281,7 @@ if 'results' in st.session_state:
             st.write("2-Stop Win Rate", f"{s['wins_2']}/{n_finished}")
             st.write("Avg Best 1-Stop Time", f"{avg_time_1stop:.1f}s")
             st.write("Avg Best 2-Stop Time", f"{avg_time_2stop:.1f}s")
+            st.write("Total DNFs", s['total_dnfs'])
         else:
             col1, col2, col3, col4, col5, col6 = st.columns(6)
             col1.metric("Most Common Strategy",  s['most_common'])
@@ -297,7 +317,7 @@ if 'results' in st.session_state:
                          title=f"Best Pit Strategy Distribution ({n_finished:,} finished races)")
             st.plotly_chart(fig, width='stretch')
 
-        # Pit lap distributions, red lines are the even stint split
+        # Pit lap distributions, dashed lines are the best stops on a race with no SC, traffic or noise
         if mobile_mode:
             c1, c2 = st.container(), st.container()
         else:
@@ -308,8 +328,8 @@ if 'results' in st.session_state:
             fig = px.histogram(x=s['pit_1'], nbins=config['total_laps'],
                    labels={'x': 'Optimal Pit Lap'},
                    title=f"Best 1-Stop Pit Lap Distribution ({n_finished:,} finished races)")
-            fig.add_vline(x=config['total_laps']/2, line_dash='dash', line_color='red',
-                        annotation_text='Deterministic optimum')
+            fig.add_vline(x=calm_1[0], line_dash='dash', line_color='red',
+                        annotation_text='Calm race best')
             fig.update_traces(marker_line=dict(color='white', width=0.5))
             fig.update_layout(xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
             st.plotly_chart(fig, width='stretch')
@@ -331,10 +351,10 @@ if 'results' in st.session_state:
             fig.update_layout(barmode='overlay',
                               title=f"Best 2-Stop Pit Lap Distribution ({n_finished:,} finished races)",
                               xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
-            fig.add_vline(x=config['total_laps']/3,   line_dash='dash', line_color='red',
-                          annotation_text='Stop 1 optimum')
-            fig.add_vline(x=2*config['total_laps']/3, line_dash='dash', line_color='orange',
-                          annotation_text='Stop 2 optimum')
+            fig.add_vline(x=calm_2[0], line_dash='dash', line_color='red',
+                          annotation_text='Calm race stop 1')
+            fig.add_vline(x=calm_2[1], line_dash='dash', line_color='orange',
+                          annotation_text='Calm race stop 2')
             st.plotly_chart(fig, width='stretch')
 
         # Pit laps split by compound, explains the double peaks above

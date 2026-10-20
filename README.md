@@ -1,5 +1,7 @@
 # F1 Race Strategy Simulator
 
+[![tests](https://github.com/JDavies101/F1-Race-Simulator/actions/workflows/tests.yml/badge.svg)](https://github.com/JDavies101/F1-Race-Simulator/actions/workflows/tests.yml)
+
 A Monte Carlo pit strategy simulator for F1, written in Python with a Streamlit front end. It runs the same race thousands of times with random safety cars, traffic and tire wear, and shows which strategies win and how often.
 
 [Live demo](https://f1-race-simulator.streamlit.app/)
@@ -16,8 +18,10 @@ After all the simulations you get a distribution of winning strategies rather th
 
 ## Model
 
-- Lap by lap: base lap time, compound offset, and degradation that grows with tire age and triples past the compound's max laps
-- Traffic is most likely right after a stop and drops off exponentially as the field spreads
+- Lap by lap: base lap time, compound offset, and degradation that grows with tire wear and triples past the compound's max laps
+- Tires wear one lap's worth per lap, more on a heavy fuel load and in dirty air
+- Fuel: the car gets faster as fuel burns off, and a full tank wears the tires faster
+- Traffic is most likely right after a stop and drops off exponentially as the field spreads. Laps in traffic cost time and extra tire wear
 - Safety car and virtual safety car slow the lap and make pitting cheaper
 - Per-lap mechanical failure chance
 - 1-stop and 2-stop strategies, with at least two different compounds as the rules require
@@ -30,7 +34,7 @@ After all the simulations you get a distribution of winning strategies rather th
 ## Output
 
 - 1-stop vs 2-stop win counts
-- Pit lap distributions, also split by starting compound (this explains the double peaks)
+- Pit lap distributions, also split by starting compound (this explains the double peaks), with the best stops for a race with no SC, traffic or noise marked for reference
 - Most common compound combinations
 - A lap time trace for the top 1-stop and 2-stop
 - Top 10 tables for each strategy type
@@ -80,7 +84,10 @@ requirements.txt
 | `mechanical_failure_prob` | Chance of a failure per lap |
 | `lap_time_offset` | Compound pace vs medium (negative is faster) |
 | `deg_rate` | Seconds added per lap of tire age |
-| `max_laps` | Tire age where deg triples |
+| `max_laps` | Laps of wear where deg triples |
+| `fuel_effect` | Seconds per lap slower for each lap of fuel on board |
+| `fuel_wear` | Extra tire wear per lap on a full tank, fading to 0 by the end |
+| `dirty_air_wear` | Extra tire wear per lap in traffic |
 | `base_traffic_prob` | Chance of traffic on the first lap of a stint |
 | `spread_rate` | How slowly traffic clears (higher is slower) |
 | `search_method` | `exhaustive` or `sampled` |
@@ -88,9 +95,6 @@ requirements.txt
 ## Roadmap
 
 Next:
-- Fuel load, lap times dropping ~0.03s/lap as fuel burns off
-
-Later:
 - Weather that changes between dry, damp and wet during the race
 - Track temperature tied to the weather
 - Track rubbering in over the race

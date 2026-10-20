@@ -9,12 +9,11 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
 import pandas as pd
 import io
 import zipfile
-from collections import Counter, defaultdict
-from monte_carlo import simulate_race, run_simulation, generate_race_events
+from collections import Counter
+from monte_carlo import simulate_race, run_simulation, generate_race_events, summarize, compound_label
 from track_presets import TRACK_PRESETS
 
 # has to be the first Streamlit call
@@ -50,7 +49,7 @@ search_method = st.sidebar.radio("Search Method", ["sampled", "exhaustive"])
 # labels repeat across compounds so each slider needs its own key
 with st.sidebar.expander("Compound Settings"):
     st.write("**Soft**")
-    soft_offset = st.slider("Offset (s)", -3.0, 0.0, st.session_state.get('soft_offset', -1.0), step=0.1, key="soft_offset")
+    soft_offset = st.slider("Offset (s)", -3.0, 0.0, st.session_state.get('soft_offset', -0.6), step=0.1, key="soft_offset")
     soft_deg    = st.slider("Deg rate", 0.01, 0.15, st.session_state.get('soft_deg', 0.08), step=0.01, key="soft_deg")
     soft_max    = st.slider("Max laps", 5, 30, st.session_state.get('soft_max', 15), key="soft_max")
     st.write("**Medium**")
@@ -58,7 +57,7 @@ with st.sidebar.expander("Compound Settings"):
     med_deg     = st.slider("Deg rate", 0.01, 0.15, st.session_state.get('med_deg', 0.05), step=0.01, key="med_deg")
     med_max     = st.slider("Max laps", 20, 50, st.session_state.get('med_max', 35), key="med_max")
     st.write("**Hard**")
-    hard_offset = st.slider("Offset (s)", 0.0, 3.0, st.session_state.get('hard_offset', 1.5), step=0.1, key="hard_offset")
+    hard_offset = st.slider("Offset (s)", 0.0, 3.0, st.session_state.get('hard_offset', 0.6), step=0.1, key="hard_offset")
     hard_deg    = st.slider("Deg rate", 0.01, 0.10, st.session_state.get('hard_deg', 0.02), step=0.01, key="hard_deg")
     hard_max    = st.slider("Max laps", 30, 70, st.session_state.get('hard_max', 50), key="hard_max")
 
@@ -80,7 +79,7 @@ with st.sidebar.expander("Traffic & Safety Car Settings"):
     vsc_base_lap_time = st.slider("VSC lap time (s)", 80, 120,
                                   st.session_state.get('vsc_base_lap_time', 87), key='vsc_lap_time')
     mechanical_failure_prob = st.slider("Mechanical failure probability (per lap)", 0.000, 0.020,
-                                        st.session_state.get('mechanical_failure_prob', 0.005),
+                                        st.session_state.get('mechanical_failure_prob', 0.002),
                                         step=0.001, format="%.3f", key='mechanical_failure_prob')
 
 st.markdown("""
@@ -245,92 +244,32 @@ if 'results' in st.session_state:
         config       = st.session_state['config']
         plot_buffers = {}  # lap trace PNGs for the download zip
 
-        optimal_laps              = []
-        optimal_laps_1_stop       = []
-        optimal_laps_2_stop_pit1  = []
-        optimal_laps_2_stop_pit2  = []
-        optimal_compounds_1_stop  = []
-        optimal_compounds_2_stop  = []
-        best_times_1_stop         = []
-        best_times_2_stop         = []
-        winning_strategies_1_stop = []  # only runs where 1-stop beat 2-stop
-        winning_strategies_2_stop = []  # only runs where 2-stop beat 1-stop
+        try:
+            s = summarize(sim_results, config['total_laps'])
+        except ValueError as e:
+            st.error(str(e))
+            st.stop()
 
-        total_dnfs = 0
-
-        for best_time_1, best_time_2, best_1, best_2, _, _, dnf_count in sim_results:
-            total_dnfs += dnf_count
-            if dnf_count:
-                continue
-            pit1, c1         = best_1
-            pit2a, pit2b, c2 = best_2
-            best = min([(best_time_1, '1-stop', best_1),
-                        (best_time_2, '2-stop', best_2)])
-            optimal_laps.append(best[1])
-            optimal_laps_1_stop.append(pit1)
-            optimal_laps_2_stop_pit1.append(pit2a)
-            optimal_laps_2_stop_pit2.append(pit2b)
-            optimal_compounds_1_stop.append(c1)
-            optimal_compounds_2_stop.append(c2)
-            best_times_1_stop.append(best_time_1)
-            best_times_2_stop.append(best_time_2)
-            if best[1] == '1-stop':
-                winning_strategies_1_stop.append((pit1, c1, best_time_1))
-            else:
-                winning_strategies_2_stop.append((pit2a, pit2b, c2, best_time_2))
-
-        most_common_strategy = max(set(optimal_laps), key=optimal_laps.count)
-        avg_time_1stop = np.mean(best_times_1_stop)
-        avg_time_2stop = np.mean(best_times_2_stop)
-
-        # take the #1 strategy from the tables so the lap traces match them
-        times_by_strategy_1 = defaultdict(list)
-        times_by_strategy_2 = defaultdict(list)
-        for pit, comp, t in winning_strategies_1_stop:
-            times_by_strategy_1[(pit, comp)].append(t)
-        for pit1, pit2, comp, t in winning_strategies_2_stop:
-            times_by_strategy_2[(pit1, pit2, comp)].append(t)
-        pit_lap_counts_1 = Counter({k: len(v) for k, v in times_by_strategy_1.items()})
-        pit_lap_counts_2 = Counter({k: len(v) for k, v in times_by_strategy_2.items()})
-
-        if pit_lap_counts_1:
-            top_freq = pit_lap_counts_1.most_common(1)[0][1]
-            # ties broken by lowest average time
-            top_candidates = [k for k, v in pit_lap_counts_1.items() if v == top_freq]
-            top_1stop = min(top_candidates, key=lambda k: np.mean(times_by_strategy_1[k]))
-            best_1stop_pit       = top_1stop[0]
-            best_1stop_compounds = list(top_1stop[1])
-        else:
-            best_1stop_pit       = config['total_laps'] // 2
-            best_1stop_compounds = list(Counter(optimal_compounds_1_stop).most_common(1)[0][0])
-
-        if pit_lap_counts_2:
-            top_freq = pit_lap_counts_2.most_common(1)[0][1]
-            top_candidates = [k for k, v in pit_lap_counts_2.items() if v == top_freq]
-            top_2stop = min(top_candidates, key=lambda k: np.mean(times_by_strategy_2[k]))
-            best_2stop_pit1      = top_2stop[0]
-            best_2stop_pit2      = top_2stop[1]
-            best_2stop_compounds = list(top_2stop[2])
-        else:
-            best_2stop_pit1      = config['total_laps'] // 3
-            best_2stop_pit2      = 2 * config['total_laps'] // 3
-            best_2stop_compounds = list(Counter(optimal_compounds_2_stop).most_common(1)[0][0])
+        n_finished = s['n_finished']
+        (best_1stop_pits, best_1stop_compounds) = s['rep_1']
+        (best_2stop_pits, best_2stop_compounds) = s['rep_2']
+        avg_time_1stop, avg_time_2stop = s['avg_time_1'], s['avg_time_2']
 
         # Metrics
         if mobile_mode:
-            st.write("Most Common Strategy", most_common_strategy)
-            st.write("1-Stop Win Rate", f"{optimal_laps.count('1-stop')}/{n_simulations - total_dnfs}")
-            st.write("2-Stop Win Rate", f"{optimal_laps.count('2-stop')}/{n_simulations - total_dnfs}")
+            st.write("Most Common Strategy", s['most_common'])
+            st.write("1-Stop Win Rate", f"{s['wins_1']}/{n_finished}")
+            st.write("2-Stop Win Rate", f"{s['wins_2']}/{n_finished}")
             st.write("Avg Best 1-Stop Time", f"{avg_time_1stop:.1f}s")
             st.write("Avg Best 2-Stop Time", f"{avg_time_2stop:.1f}s")
         else:
             col1, col2, col3, col4, col5, col6 = st.columns(6)
-            col1.metric("Most Common Strategy",  most_common_strategy)
-            col2.metric("1-Stop Win Rate",        f"{optimal_laps.count('1-stop')}/{n_simulations - total_dnfs}")
-            col3.metric("2-Stop Win Rate",        f"{optimal_laps.count('2-stop')}/{n_simulations - total_dnfs}")
+            col1.metric("Most Common Strategy",  s['most_common'])
+            col2.metric("1-Stop Win Rate",        f"{s['wins_1']}/{n_finished}")
+            col3.metric("2-Stop Win Rate",        f"{s['wins_2']}/{n_finished}")
             col4.metric("Avg Best 1-Stop Time",   f"{avg_time_1stop:.1f}s")
             col5.metric("Avg Best 2-Stop Time",   f"{avg_time_2stop:.1f}s")
-            col6.metric("Total DNFs", total_dnfs)
+            col6.metric("Total DNFs", s['total_dnfs'])
 
         # Strategy summary
         st.subheader("Strategy Summary")
@@ -339,10 +278,10 @@ if 'results' in st.session_state:
         else:
             c1, c2 = st.columns(2)
         with c1:
-            st.write(f"**Best 1-Stop:** Pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
+            st.write(f"**Best 1-Stop:** Pit lap {best_1stop_pits[0]}, compounds {compound_label(best_1stop_compounds)}")
             st.write(f"**Avg race time:** {avg_time_1stop:.1f}s ({avg_time_1stop//60:.0f}m {avg_time_1stop%60:.1f}s)")
         with c2:
-            st.write(f"**Best 2-Stop:** Pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
+            st.write(f"**Best 2-Stop:** Pit laps {best_2stop_pits[0]}/{best_2stop_pits[1]}, compounds {compound_label(best_2stop_compounds)}")
             st.write(f"**Avg race time:** {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
 
         # 1-stop vs 2-stop, centered on desktop
@@ -352,10 +291,10 @@ if 'results' in st.session_state:
             _, center, _ = st.columns([1, 2, 1])
         with center:
             st.subheader("Strategy Distribution")
-            counts = Counter(optimal_laps)
+            counts = Counter(s['winner'])
             fig = px.bar(x=list(counts.keys()), y=list(counts.values()),
                          labels={'x': 'Strategy', 'y': 'Frequency'},
-                         title=f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
+                         title=f"Best Pit Strategy Distribution ({n_finished:,} finished races)")
             st.plotly_chart(fig, width='stretch')
 
         # Pit lap distributions, red lines are the even stint split
@@ -366,14 +305,14 @@ if 'results' in st.session_state:
 
         with c1:
             st.subheader("1-Stop Pit Lap Distribution")
-            fig = px.histogram(x=optimal_laps_1_stop, nbins=config['total_laps'],
+            fig = px.histogram(x=s['pit_1'], nbins=config['total_laps'],
                    labels={'x': 'Optimal Pit Lap'},
-                   title=f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
+                   title=f"Best 1-Stop Pit Lap Distribution ({n_finished:,} finished races)")
             fig.add_vline(x=config['total_laps']/2, line_dash='dash', line_color='red',
                         annotation_text='Deterministic optimum')
             fig.update_traces(marker_line=dict(color='white', width=0.5))
             fig.update_layout(xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("2-Stop Pit Lap Distribution")
@@ -381,16 +320,16 @@ if 'results' in st.session_state:
             bin_end = config['total_laps']
             bin_size = 1
             fig = go.Figure()
-            fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit1, name='First stop',
+            fig.add_trace(go.Histogram(x=s['pit_2a'], name='First stop',
                                     opacity=0.7,
                                     xbins=dict(start=bin_start, end=bin_end, size=bin_size),
                                     marker_line=dict(color='white', width=0.5)))
-            fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit2, name='Second stop',
+            fig.add_trace(go.Histogram(x=s['pit_2b'], name='Second stop',
                                     opacity=0.7,
                                     xbins=dict(start=bin_start, end=bin_end, size=bin_size),
                                     marker_line=dict(color='white', width=0.5)))
             fig.update_layout(barmode='overlay',
-                              title=f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)",
+                              title=f"Best 2-Stop Pit Lap Distribution ({n_finished:,} finished races)",
                               xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
             fig.add_vline(x=config['total_laps']/3,   line_dash='dash', line_color='red',
                           annotation_text='Stop 1 optimum')
@@ -399,16 +338,6 @@ if 'results' in st.session_state:
             st.plotly_chart(fig, width='stretch')
 
         # Pit laps split by compound, explains the double peaks above
-        soft_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
-        med_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
-        hard_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
-        soft_pit1  = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'soft']
-        med_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'medium']
-        hard_pit1  = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'hard']
-        soft_pit2  = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'soft']
-        med_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'medium']
-        hard_pit2  = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'hard']
-
         st.subheader("Pit Lap Distribution by Compound")
         if mobile_mode:
             c1, c2, c3 = st.container(), st.container(), st.container()
@@ -416,15 +345,15 @@ if 'results' in st.session_state:
             c1, c2, c3 = st.columns(3)
 
         with c1:
-            st.plotly_chart(make_compound_hist(soft_1stop, med_1stop, hard_1stop,
+            st.plotly_chart(make_compound_hist(*s['by_compound']['1-stop'].values(),
                             "1-Stop: opening compound", config['total_laps']),
                             width='stretch')
         with c2:
-            st.plotly_chart(make_compound_hist(soft_pit1, med_pit1, hard_pit1,
+            st.plotly_chart(make_compound_hist(*s['by_compound']['2-stop first'].values(),
                             "2-Stop First Stop: opening compound", config['total_laps']),
                             width='stretch')
         with c3:
-            st.plotly_chart(make_compound_hist(soft_pit2, med_pit2, hard_pit2,
+            st.plotly_chart(make_compound_hist(*s['by_compound']['2-stop second'].values(),
                             "2-Stop Second Stop: second stint compound", config['total_laps']),
                             width='stretch')
 
@@ -436,24 +365,24 @@ if 'results' in st.session_state:
 
         with c1:
             st.subheader("1-Stop Compound Distribution")
-            compound_counts_1 = Counter(optimal_compounds_1_stop)
+            compound_counts_1 = Counter(s['comps_1'])
             top_combos = compound_counts_1.most_common(6)
             labels = [f"{c[0][0].upper()}→{c[1][0].upper()}" for c, _ in top_combos]
             values = [v for _, v in top_combos]
             fig = px.bar(x=labels, y=values,
                          labels={'x': 'Compound Combination', 'y': 'Frequency'},
-                         title=f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
+                         title=f"Best 1-Stop Compound Distribution ({n_finished:,} finished races)")
             st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("2-Stop Compound Distribution")
-            compound_counts_2 = Counter(optimal_compounds_2_stop)
+            compound_counts_2 = Counter(s['comps_2'])
             top_combos = compound_counts_2.most_common(6)
             labels = [f"{c[0][0].upper()}→{c[1][0].upper()}→{c[2][0].upper()}" for c, _ in top_combos]
             values = [v for _, v in top_combos]
             fig = px.bar(x=labels, y=values,
                          labels={'x': 'Compound Combination', 'y': 'Frequency'},
-                         title=f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
+                         title=f"Best 2-Stop Compound Distribution ({n_finished:,} finished races)")
             st.plotly_chart(fig, width='stretch')
 
         # Lap traces
@@ -464,20 +393,20 @@ if 'results' in st.session_state:
 
         with c1:
             st.subheader("Best 1-Stop Lap Trace")
-            fig = plot_single_race_st(config, [best_1stop_pit], best_1stop_compounds)
+            fig = plot_single_race_st(config, best_1stop_pits, best_1stop_compounds)
             st.plotly_chart(fig, width='stretch')
 
         with c2:
             st.subheader("Best 2-Stop Lap Trace")
-            fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
+            fig = plot_single_race_st(config, best_2stop_pits, best_2stop_compounds)
             st.plotly_chart(fig, width='stretch')
 
         # matplotlib copies of the traces for the zip (no kaleido on Streamlit Cloud)
         compound_colors_mpl = {'soft': 'red', 'medium': 'yellow', 'hard': 'gray'}
 
         for trace_key, pit_laps, compounds in [
-            ('1-Stop Lap Trace', [best_1stop_pit], best_1stop_compounds),
-            ('2-Stop Lap Trace', [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
+            ('1-Stop Lap Trace', best_1stop_pits, best_1stop_compounds),
+            ('2-Stop Lap Trace', best_2stop_pits, best_2stop_compounds)
         ]:
             for _ in range(20):
                 sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
@@ -508,10 +437,9 @@ if 'results' in st.session_state:
         # Strategy tables, win rate is within that strategy type only
         st.subheader("Strategy Tables")
 
-        total_1stop_wins = len(winning_strategies_1_stop)
+        total_1stop_wins = s['wins_1']
         rows_1 = []
-        pit_lap_counts_1 = Counter({(pit, comp): len(v) for (pit, comp), v in times_by_strategy_1.items()})
-        for (pit, comp), freq in pit_lap_counts_1.most_common(10):
+        for (pit, comp), freq in s['top_1']:
             rows_1.append({
                 'Starting Tire': comp[0][0].upper(),
                 'Stop 1':        f"Lap {pit} → {comp[1][0].upper()}",
@@ -522,10 +450,9 @@ if 'results' in st.session_state:
         df_1stop.index = range(1, len(df_1stop) + 1)
         df_1stop.index.name = 'Rank'
 
-        total_2stop_wins = len(winning_strategies_2_stop)
+        total_2stop_wins = s['wins_2']
         rows_2 = []
-        pit_lap_counts_2 = Counter({k: len(v) for k, v in times_by_strategy_2.items()})
-        for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
+        for (pit1, pit2, comp), freq in s['top_2']:
             rows_2.append({
                 'Starting Tire': comp[0][0].upper(),
                 'Stop 1':        f"Lap {pit1} → {comp[1][0].upper()}",
@@ -544,13 +471,13 @@ if 'results' in st.session_state:
 
         with c1:
             st.write("**Top 10 1-Stop Strategies**")
-            st.write(f"*{total_1stop_wins} total 1-stop wins ({total_1stop_wins/n_simulations*100:.1f}% of simulations)*")
+            st.write(f"*{total_1stop_wins} total 1-stop wins ({total_1stop_wins/n_finished*100:.1f}% of finished races)*")
             st.caption("Win rate = % of wins within this strategy type, not overall race wins")
             st.dataframe(df_1stop, width='stretch')
 
         with c2:
             st.write("**Top 10 2-Stop Strategies**")
-            st.write(f"*{total_2stop_wins} total 2-stop wins ({total_2stop_wins/n_simulations*100:.1f}% of simulations)*")
+            st.write(f"*{total_2stop_wins} total 2-stop wins ({total_2stop_wins/n_finished*100:.1f}% of finished races)*")
             st.caption("Win rate = % of wins within this strategy type, not overall race wins")
             st.dataframe(df_2stop, width='stretch')
 

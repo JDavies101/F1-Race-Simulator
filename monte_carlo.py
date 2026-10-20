@@ -11,97 +11,99 @@ import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import sys
 from itertools import product
+from collections import Counter, defaultdict
 
-def simulate_race(pit_lap1, compounds, race_events, config, pit_lap2=None, 
+def make_noise(total_laps, rng):
+    """Per-lap random draws for pit stop time, deg and traffic."""
+    return {'pit': rng.normal(0, 2, total_laps),
+            'deg': rng.normal(0, 0.001, total_laps),
+            'traffic': rng.random(total_laps)}
+
+
+def lap_times_batch(strategies, race_events, config, noise):
+    """
+    Lap times for many strategies on the same race at once.
+
+    strategies: list of (pit_lap1, pit_lap2, compounds), pit_lap2=None for a 1-stop
+    Returns an array of shape (len(strategies), total_laps).
+
+    Each row is worked out the same way as running the race lap by lap:
+    tire age resets to 1 the lap after a stop, and the pit lap itself still
+    counts as part of the old stint.
+    """
+    total_laps = config['total_laps']
+    names = list(config['compound_data'])
+    data = config['compound_data']
+    offsets = np.array([data[c]['lap_time_offset'] for c in names])
+    degs = np.array([data[c]['deg_rate'] for c in names])
+    max_laps = np.array([data[c]['max_laps'] for c in names])
+
+    no_stop = total_laps + 1   # stands in for a missing second stop
+    pit1 = np.array([s[0] for s in strategies])[:, None]
+    pit2 = np.array([no_stop if s[1] is None else s[1] for s in strategies])[:, None]
+    # pad 1-stops to 3 stints, the third is never reached
+    comps = np.array([[names.index(c) for c in (s[2] if len(s[2]) == 3 else s[2] + s[2][-1:])]
+                      for s in strategies])
+
+    lap = np.arange(1, total_laps + 1)
+    stint = (lap > pit1).astype(int) + (lap > pit2)
+    last_pit = np.where(lap > pit2, pit2, np.where(lap > pit1, pit1, 0))
+    tire_age = np.where(last_pit > 0, lap - last_pit, lap - 1)
+    stint_lap = np.where(last_pit > 0, lap - last_pit - 1, lap - 1)
+
+    c = np.take_along_axis(comps, stint, axis=1)
+    # past max_laps the tire falls off and deg triples
+    deg = np.where(tire_age > max_laps[c], degs[c] * 3, degs[c])
+
+    events = np.asarray(race_events)
+    base = np.where(events == 2, config['sc_base_lap_time'],
+                    np.where(events == 1, config['vsc_base_lap_time'], config['base_lap_time']))
+    times = base + offsets[c] + (deg + noise['deg']) * tire_age
+
+    # traffic chance is highest right after a stop and drops off as the field spreads.
+    # no traffic loss under SC/VSC since everyone is going the same speed
+    traffic_prob = config['base_traffic_prob'] * np.exp(-stint_lap / config['spread_rate'])
+    in_traffic = (noise['traffic'] < traffic_prob) & (events == 0)
+    times = np.where(in_traffic, times + config['traffic_time_loss'], times)
+
+    # pitting is cheaper under SC/VSC since the field is slowed down
+    pit_cost = np.where(events == 2, config['sc_pit_loss'],
+                        np.where(events == 1, config['vsc_pit_loss'], config['pit_loss'])) + noise['pit']
+    pitting = (lap == pit1) | (lap == pit2)
+    return np.where(pitting, times + pit_cost, times)
+
+
+def race_totals(strategies, race_events, config, noise, dnf=False):
+    """Total race time for each strategy, inf for all of them if the car DNFs."""
+    if dnf:
+        return np.full(len(strategies), np.inf)
+    # cumsum adds left to right like a plain loop would
+    return np.cumsum(lap_times_batch(strategies, race_events, config, noise), axis=1)[:, -1]
+
+
+def simulate_race(pit_lap1, compounds, race_events, config, pit_lap2=None,
                   dnf=False, dnf_lap=None, noise=None, rng=None):
     """
-    Run one race lap by lap for a fixed strategy.
+    Run one race for a fixed strategy.
 
     pit_lap1, pit_lap2: laps to pit on (pit_lap2=None means a 1-stop)
     compounds: tire for each stint, e.g. ('soft', 'medium')
     race_events: per-lap event array from generate_race_events
     config: race settings (see main())
     dnf, dnf_lap: if dnf is True the race isn't run and time is inf
+    noise: per-lap draws from make_noise, made fresh if not given
 
     Returns a dict with total_time, lap_times, dnf and dnf_lap.
     """
 
     if dnf:
         return {'total_time': np.inf, 'lap_times': [], 'dnf': True, 'dnf_lap': dnf_lap}
-    
-    if noise is None: # lap trace plots dont pass noise in
-        rng = rng or np.random.default_rng()
-        noise = {'pit': rng.normal(0, 2, config['total_laps']),
-                 'deg': rng.normal(0, 0.001, config['total_laps']),
-                 'traffic': rng.random(config['total_laps'])}
 
-    total_time = 0
-    tire_age = 0       # laps on current tires
-    stint_lap = 0      # laps since last stop, used for traffic
-    stint_number = 0
-    lap_times = []
+    if noise is None:  # lap trace plots don't pass noise in
+        noise = make_noise(config['total_laps'], rng or np.random.default_rng())
 
-    pit_laps = [p for p in [pit_lap1, pit_lap2] if p is not None]
-
-    for laps in range(1, config['total_laps'] + 1):
-
-        i = laps - 1
-
-        # drawn every lap but only used if we pit this lap
-        pit_loss_randomness = noise['pit'][i]
-
-        tire_degradation_rate_randomness = noise['deg'][i]
-
-        # traffic chance is highest right after a stop and drops off as the field spreads
-        traffic_prob = config['base_traffic_prob'] * np.exp(-stint_lap / config['spread_rate'])
-        in_traffic = noise['traffic'][i] < traffic_prob
-
-        # number of stops already made gives the current stint
-        stint_number = sum(1 for p in pit_laps if laps > p)
-        current_compound = compounds[stint_number]
-        compound_data = config['compound_data'][current_compound]
-
-        # past max_laps the tire falls off and deg triples
-        if tire_age > compound_data['max_laps']:
-            deg_this_lap = compound_data['deg_rate'] * 3
-        else:
-            deg_this_lap = compound_data['deg_rate']
-
-        event = race_events[laps - 1]
-        if event == 2:
-            current_base = config['sc_base_lap_time']
-        elif event == 1:
-            current_base = config['vsc_base_lap_time']
-        else:
-            current_base = config['base_lap_time']
-
-        lap_time = (current_base
-                    + compound_data['lap_time_offset']
-                    + (deg_this_lap + tire_degradation_rate_randomness) * tire_age)
-
-        # no traffic loss under SC/VSC since everyone is going the same speed
-        if in_traffic and event == 0:
-            lap_time += config['traffic_time_loss']
-
-        if laps in pit_laps:
-            # pitting is cheaper under SC/VSC since the field is slowed down
-            if event == 2:
-                lap_time += config['sc_pit_loss'] + pit_loss_randomness
-            elif event == 1:
-                lap_time += config['vsc_pit_loss'] + pit_loss_randomness
-            else:
-                lap_time += config['pit_loss'] + pit_loss_randomness
-
-            stint_lap = 0
-            tire_age = 1
-        else:
-            tire_age += 1
-            stint_lap += 1
-
-        lap_times.append(lap_time)
-
-    total_time = sum(lap_times)
-    return {'total_time': total_time, 'lap_times': lap_times, 'dnf': False, 'dnf_lap': None}
+    lap_times = lap_times_batch([(pit_lap1, pit_lap2, tuple(compounds))], race_events, config, noise)[0]
+    return {'total_time': sum(lap_times.tolist()), 'lap_times': lap_times.tolist(), 'dnf': False, 'dnf_lap': None}
 
 
 def run_simulation(args):
@@ -111,12 +113,13 @@ def run_simulation(args):
 
     args is (config, seed) so it can be passed straight to a process pool.
 
-    Returns (best_time_1, best_time_2, best_1, best_2,
-             lap_times_1_stop, lap_times_2_stop, dnf_count).
+    Returns (best_time_1, best_time_2, best_1, best_2, dnf_count).
     best_1 is (pit_lap, compounds), best_2 is (pit_lap1, pit_lap2, compounds).
     """
 
     config, seed = args
+    if config['total_laps'] < 10:
+        raise ValueError("races need at least 10 laps")
     rng = np.random.default_rng(seed)
     # same events for every strategy in this run so they're compared fairly
     sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], 
@@ -132,8 +135,13 @@ def run_simulation(args):
 
     results_1_stop = {}      # (pit_lap, compounds) -> total_time
     results_2_stop = {}      # (pit_lap1, pit_lap2, compounds) -> total_time
-    lap_times_1_stop = {}
-    lap_times_2_stop = {}
+
+    def run_2stops(keys):
+        # times any 2-stops we haven't tried yet, all in one batch
+        new = [k for k in dict.fromkeys(keys) if k not in results_2_stop]
+        if new:
+            totals = race_totals([(p1, p2, comps) for p1, p2, comps in new], sc_laps, config, noise, car_dnf)
+            results_2_stop.update(zip(new, totals.tolist()))
 
     compound_names = list(config['compound_data'].keys())
 
@@ -142,37 +150,31 @@ def run_simulation(args):
     valid_2stop = [(c1, c2, c3) for c1, c2, c3 in product(compound_names, repeat=3)
                    if len(set([c1, c2, c3])) >= 2]
 
-    noise = {
-        'pit': rng.normal(0, 2, config['total_laps']),
-        'deg': rng.normal(0, 0.001, config['total_laps']),
-        'traffic': rng.random(config['total_laps']),
-    }
+    noise = make_noise(config['total_laps'], rng)
+
+    # every 1-stop in both modes, it's only a few hundred races
+    keys_1 = [(pit_lap, c) for pit_lap in range(1, config['total_laps'] - 5) for c in valid_1stop]
+    totals = race_totals([(p, None, c) for p, c in keys_1], sc_laps, config, noise, car_dnf)
+    results_1_stop.update(zip(keys_1, totals.tolist()))
 
     if config['search_method'] == 'exhaustive':
-        # every pit lap and compound combo, slow but finds the real best
-        for pit_lap in range(1, config['total_laps'] - 5):
-            for c1stop in valid_1stop:
-                result = simulate_race(pit_lap, c1stop, sc_laps, config, None, dnf=car_dnf, dnf_lap=dnf_lap, noise=noise)
-                results_1_stop[(pit_lap, c1stop)] = result['total_time']
-
-            for pit_lap2 in range(pit_lap + 1, config['total_laps'] - 2):
-                for c2stop in valid_2stop:
-                    result = simulate_race(pit_lap, c2stop, sc_laps, config, pit_lap2=pit_lap2, dnf=car_dnf, dnf_lap= dnf_lap, noise=noise)
-                    results_2_stop[(pit_lap, pit_lap2, c2stop)] = result['total_time']
+        # every 2-stop too, slow but finds the real best
+        run_2stops([(p1, p2, c) for p1 in range(1, config['total_laps'] - 5)
+                    for p2 in range(p1 + 1, config['total_laps'] - 2) for c in valid_2stop])
 
     else:
-        # random subset of strategies, much faster for the web app
-        for pit_lap in range(1, config['total_laps'] - 5):
-            for c1stop in valid_1stop:
-                result = simulate_race(pit_lap, c1stop, sc_laps, config, None, dnf=car_dnf, dnf_lap=dnf_lap, noise=noise)
-                results_1_stop[(pit_lap, c1stop)] = result['total_time']
-
+        # random 2-stops, then refine
+        sampled = []
+        laps = config['total_laps']
         for _ in range(config['n_strategies_sampled']):
-            pit_lap1 = rng.integers(5, config['total_laps'] - 15)
-            pit_lap2 = rng.integers(pit_lap1 + 5, config['total_laps'] - 5)
-            compounds = valid_2stop[rng.integers(len(valid_2stop))]
-            result = simulate_race(pit_lap1, compounds, sc_laps, config, pit_lap2=pit_lap2, dnf=car_dnf, dnf_lap=dnf_lap, noise=noise)
-            results_2_stop[(pit_lap1, pit_lap2, compounds)] = result['total_time']
+            # keep stops away from the start and end, unless the race is too
+            # short for that, then anywhere with the second stop after the first
+            low, high = (5, laps - 15) if laps - 15 > 5 else (1, laps - 2)
+            pit_lap1 = int(rng.integers(low, high))
+            low, high = (pit_lap1 + 5, laps - 5) if laps - 5 > pit_lap1 + 5 else (pit_lap1 + 1, laps)
+            pit_lap2 = int(rng.integers(low, high))
+            sampled.append((pit_lap1, pit_lap2, valid_2stop[rng.integers(len(valid_2stop))]))
+        run_2stops(sampled)
 
         # for each compound set, keep moving to the best pit laps within +-3
         # of the current best until nothing nearby is faster
@@ -182,17 +184,9 @@ def run_simulation(args):
                 continue
             p1, p2, _ = min(cands, key=results_2_stop.get)
             while True:
-                nearby = []
-                for d1 in range(-3, 4):
-                    for d2 in range(-3, 4):
-                        a, b = p1 + d1, p2 + d2
-                        if not (1 <= a < b < config['total_laps']):
-                            continue
-                        key = (a, b, comps)
-                        if key not in results_2_stop:
-                            result = simulate_race(a, comps, sc_laps, config, pit_lap2=b, dnf=car_dnf, dnf_lap=dnf_lap, noise=noise)
-                            results_2_stop[key] = result['total_time']
-                        nearby.append(key)
+                nearby = [(p1 + d1, p2 + d2, comps) for d1 in range(-3, 4) for d2 in range(-3, 4)
+                          if 1 <= p1 + d1 < p2 + d2 < config['total_laps']]
+                run_2stops(nearby)
                 best_nearby = min(nearby, key=results_2_stop.get)
                 if results_2_stop[best_nearby] >= results_2_stop[(p1, p2, comps)]:
                     break
@@ -201,7 +195,80 @@ def run_simulation(args):
     best_1 = min(results_1_stop, key=results_1_stop.get)
     best_2 = min(results_2_stop, key=results_2_stop.get)
 
-    return results_1_stop[best_1], results_2_stop[best_2], best_1, best_2, lap_times_1_stop, lap_times_2_stop, dnf_count
+    return results_1_stop[best_1], results_2_stop[best_2], best_1, best_2, dnf_count
+
+
+def summarize(sim_results, total_laps):
+    """
+    Collect the results of many run_simulation calls into the numbers
+    the app and main() show. DNF runs are counted then left out.
+    """
+    s = {'n_sims': len(sim_results), 'total_dnfs': 0, 'winner': [],
+         'pit_1': [], 'comps_1': [], 'pit_2a': [], 'pit_2b': [], 'comps_2': [],
+         'times_1': [], 'times_2': []}
+    wins_1 = defaultdict(list)   # winning strategy -> race times, only runs where it beat the other type
+    wins_2 = defaultdict(list)
+
+    for best_time_1, best_time_2, best_1, best_2, dnf_count in sim_results:
+        s['total_dnfs'] += dnf_count
+        if dnf_count:
+            continue
+        pit1, c1 = best_1
+        pit2a, pit2b, c2 = best_2
+        s['pit_1'].append(pit1)
+        s['comps_1'].append(c1)
+        s['pit_2a'].append(pit2a)
+        s['pit_2b'].append(pit2b)
+        s['comps_2'].append(c2)
+        s['times_1'].append(best_time_1)
+        s['times_2'].append(best_time_2)
+        if best_time_1 <= best_time_2:
+            s['winner'].append('1-stop')
+            wins_1[best_1].append(best_time_1)
+        else:
+            s['winner'].append('2-stop')
+            wins_2[best_2].append(best_time_2)
+
+    s['n_finished'] = s['n_sims'] - s['total_dnfs']
+    if s['n_finished'] == 0:
+        raise ValueError("every simulation ended in a DNF, lower the failure probability")
+
+    s['wins_1'] = s['winner'].count('1-stop')
+    s['wins_2'] = s['winner'].count('2-stop')
+    s['most_common'] = '1-stop' if s['wins_1'] >= s['wins_2'] else '2-stop'
+    s['avg_time_1'] = float(np.mean(s['times_1']))
+    s['avg_time_2'] = float(np.mean(s['times_2']))
+
+    # top 10 winning strategies of each type, (strategy, times it won)
+    s['top_1'] = Counter({k: len(v) for k, v in wins_1.items()}).most_common(10)
+    s['top_2'] = Counter({k: len(v) for k, v in wins_2.items()}).most_common(10)
+
+    # pit laps split by starting compound (second stint for the 2nd stop),
+    # explains the double peaks in the pit lap histograms
+    s['by_compound'] = {}
+    for name, pits, comps, stint in [('1-stop', s['pit_1'], s['comps_1'], 0),
+                                     ('2-stop first', s['pit_2a'], s['comps_2'], 0),
+                                     ('2-stop second', s['pit_2b'], s['comps_2'], 1)]:
+        s['by_compound'][name] = {tire: [p for p, c in zip(pits, comps) if c[stint] == tire]
+                                  for tire in ('soft', 'medium', 'hard')}
+
+    # strategy to show in the lap traces: #1 in the table, ties go to the faster
+    # average time. falls back to an even split if that type never won
+    def representative(wins, all_comps, fallback_pits):
+        if not wins:
+            return fallback_pits, list(Counter(all_comps).most_common(1)[0][0])
+        top_freq = max(len(v) for v in wins.values())
+        top = min((k for k, v in wins.items() if len(v) == top_freq), key=lambda k: np.mean(wins[k]))
+        return list(top[:-1]), list(top[-1])
+
+    s['rep_1'] = representative(wins_1, s['comps_1'], [total_laps // 2])
+    s['rep_2'] = representative(wins_2, s['comps_2'], [total_laps // 3, 2 * total_laps // 3])
+    return s
+
+
+def compound_label(comps):
+    """('soft', 'medium') -> 'S → M'"""
+    return ' → '.join(c[0].upper() for c in comps)
 
 
 def plot_single_race(config, pit_laps, compounds, filename='lap_trace.png'):
@@ -264,7 +331,7 @@ def main():
         'sc_base_lap_time': 90,
         'vsc_pit_loss': 18,
         'vsc_base_lap_time': 87,
-        'mechanical_failure_prob': 1/200,   # per lap
+        'mechanical_failure_prob': 0.002,   # per lap, ~11% of races over 60 laps
         'total_laps': 60,
 
         # per-race % spread over the laps, so 50 here is ~50% chance of an SC in the race
@@ -289,124 +356,59 @@ def main():
 
     n_simulations = 1000
 
-    optimal_laps = []              # '1-stop' or '2-stop', whichever won
-    optimal_laps_1_stop = []
-    optimal_laps_2_stop_pit1 = []
-    optimal_laps_2_stop_pit2 = []
-    optimal_compounds_1_stop = []
-    optimal_compounds_2_stop = []
-    winning_strategies_1_stop = []
-    winning_strategies_2_stop = []
-    best_times_1_stop = []
-    best_times_2_stop = []
-
     with Pool(processes=12) as pool:
         args = [(config, sim) for sim in range(n_simulations)]
         sim_results = []
         for i, result in enumerate(pool.imap(run_simulation, args)):
             sim_results.append(result)
-            if i % (n_simulations // 10) == 0:
+            if i % max(1, n_simulations // 10) == 0:
                 print(f"Simulation {i}/{n_simulations}")
                 sys.stdout.flush()
 
-    total_dnfs = 0
-    for best_time_1, best_time_2, best_1, best_2, lap_times_1_stop, lap_times_2_stop, dnf_count in sim_results:
-        total_dnfs += dnf_count
+    s = summarize(sim_results, config['total_laps'])
+    n_finished = s['n_finished']
 
-        if dnf_count:
-            continue
+    (rep_1_pits, rep_1_comps), (rep_2_pits, rep_2_comps) = s['rep_1'], s['rep_2']
+    plot_single_race(config, rep_1_pits, rep_1_comps, filename='lap_trace_1stop.png')
+    plot_single_race(config, rep_2_pits, rep_2_comps, filename='lap_trace_2stop.png')
 
-        pit1, c1 = best_1
-        pit2a, pit2b, c2 = best_2
-
-        # tuples compare on time first
-        best = min([(best_time_1, '1-stop', best_1),
-                    (best_time_2, '2-stop', best_2)])
-
-        optimal_laps.append(best[1])
-        optimal_laps_1_stop.append(pit1)
-        optimal_laps_2_stop_pit1.append(pit2a)
-        optimal_laps_2_stop_pit2.append(pit2b)
-        optimal_compounds_1_stop.append(c1)
-        optimal_compounds_2_stop.append(c2)
-        best_times_1_stop.append(best_time_1)
-        best_times_2_stop.append(best_time_2)
-        if best[1] == '1-stop':
-            winning_strategies_1_stop.append((pit1, c1))
-        else:
-            winning_strategies_2_stop.append((pit2a, pit2b, c2))
-
-    # lap traces for the most common compounds and pit laps
-    from collections import Counter
-
-    best_1stop_compounds = list(Counter(optimal_compounds_1_stop).most_common(1)[0][0])
-    filtered_pit1_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if list(c) == best_1stop_compounds]
-    best_1stop_pit = Counter(filtered_pit1_1stop).most_common(1)[0][0]
-
-    best_2stop_compounds = list(Counter(optimal_compounds_2_stop).most_common(1)[0][0])
-    filtered_pit1 = [p1 for p1, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if list(c) == best_2stop_compounds]
-    filtered_pit2 = [p2 for p2, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if list(c) == best_2stop_compounds]
-    best_2stop_pit1 = Counter(filtered_pit1).most_common(1)[0][0]
-    best_2stop_pit2 = Counter(filtered_pit2).most_common(1)[0][0]
-
-    plot_single_race(config, [best_1stop_pit], best_1stop_compounds, filename='lap_trace_1stop.png')
-    plot_single_race(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds, filename='lap_trace_2stop.png')
-
-    avg_time_1stop = np.mean(best_times_1_stop)
-    avg_time_2stop = np.mean(best_times_2_stop)
-    most_common_strategy = max(set(optimal_laps), key=optimal_laps.count)
-
-    n_finished = n_simulations - total_dnfs
-
-    print(f"Most common optimal pit strategy: {most_common_strategy}")
-    print(f"1-stop wins: {optimal_laps.count('1-stop')}/{n_finished} ({optimal_laps.count('1-stop')/n_finished*100:.1f}%)")
-    print(f"2-stop wins: {optimal_laps.count('2-stop')}/{n_finished} ({optimal_laps.count('2-stop')/n_finished*100:.1f}%)")
-    print(f"Avg best 1-stop time: {avg_time_1stop:.1f}s ({avg_time_1stop//60:.0f}m {avg_time_1stop%60:.1f}s)")
-    print(f"Avg best 2-stop time: {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
-    print(f"Best 1-stop: pit lap {best_1stop_pit}, compounds {' → '.join([c[0].upper() for c in best_1stop_compounds])}")
-    print(f"Best 2-stop: pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
-    print(f"Total DNFs: {total_dnfs} ({total_dnfs/n_simulations*100:.1f}% of simulations)")
+    print(f"Most common optimal pit strategy: {s['most_common']}")
+    print(f"1-stop wins: {s['wins_1']}/{n_finished} ({s['wins_1']/n_finished*100:.1f}%)")
+    print(f"2-stop wins: {s['wins_2']}/{n_finished} ({s['wins_2']/n_finished*100:.1f}%)")
+    for label, t in [('1-stop', s['avg_time_1']), ('2-stop', s['avg_time_2'])]:
+        print(f"Avg best {label} time: {t:.1f}s ({t//60:.0f}m {t%60:.1f}s)")
+    print(f"Best 1-stop: pit lap {rep_1_pits[0]}, compounds {compound_label(rep_1_comps)}")
+    print(f"Best 2-stop: pit laps {rep_2_pits[0]}/{rep_2_pits[1]}, compounds {compound_label(rep_2_comps)}")
+    print(f"Total DNFs: {s['total_dnfs']} ({s['total_dnfs']/n_simulations*100:.1f}% of simulations)")
 
     # plots
+    title_end = f"({n_finished:,} finished races)"
 
-    compound_counts_1 = Counter(optimal_compounds_1_stop)
-    top_combos = compound_counts_1.most_common(6)
-    labels = [f"{c[0][0].upper()}→{c[1][0].upper()}" for c, _ in top_combos]
-    values = [v for _, v in top_combos]
-    plt.bar(labels, values)
-    plt.xlabel("Compound Combination")
-    plt.ylabel("Frequency")
-    plt.title(f"Best 1-Stop Compound Distribution ({n_simulations:,} simulations)")
-    plt.savefig('monte_carlo_dist_medium_v1_compounds_1_stop.png', dpi=450, bbox_inches='tight')
-    plt.close()
+    for comps, name in [(s['comps_1'], '1'), (s['comps_2'], '2')]:
+        top_combos = Counter(comps).most_common(6)
+        plt.bar([compound_label(c) for c, _ in top_combos], [v for _, v in top_combos])
+        plt.xlabel("Compound Combination")
+        plt.ylabel("Frequency")
+        plt.title(f"Best {name}-Stop Compound Distribution {title_end}")
+        plt.savefig(f'monte_carlo_dist_medium_v1_compounds_{name}_stop.png', dpi=450, bbox_inches='tight')
+        plt.close()
 
-    compound_counts_2 = Counter(optimal_compounds_2_stop)
-    top_combos = compound_counts_2.most_common(6)
-    labels = [f"{c[0][0].upper()}→{c[1][0].upper()}→{c[2][0].upper()}" for c, _ in top_combos]
-    values = [v for _, v in top_combos]
-    plt.bar(labels, values)
-    plt.xlabel("Compound Combination")
-    plt.ylabel("Frequency")
-    plt.title(f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
-    plt.savefig('monte_carlo_dist_medium_v1_compounds_2_stop.png', dpi=450, bbox_inches='tight')
-    plt.close()
+    bins = range(1, config['total_laps'])
 
-    plt.hist(optimal_laps_1_stop, bins=range(1, config['total_laps']), edgecolor='black')
+    plt.hist(s['pit_1'], bins=bins, edgecolor='black')
     plt.xlabel("Optimal Pit Lap")
     plt.ylabel("Frequency")
-    plt.title(f"Best 1-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
+    plt.title(f"Best 1-Stop Pit Lap Distribution {title_end}")
     plt.axvline(x=(config['total_laps'] / 2), color='red', linestyle='--', label='Deterministic optimum')
     plt.legend()
     plt.savefig('monte_carlo_dist_medium_v1_1_stop.png', dpi=450, bbox_inches='tight')
     plt.close()
 
-    plt.hist(optimal_laps_2_stop_pit1, bins=range(1, config['total_laps']),
-             edgecolor='black', alpha=0.7, label='First stop')
-    plt.hist(optimal_laps_2_stop_pit2, bins=range(1, config['total_laps']),
-             edgecolor='black', alpha=0.7, label='Second stop')
+    plt.hist(s['pit_2a'], bins=bins, edgecolor='black', alpha=0.7, label='First stop')
+    plt.hist(s['pit_2b'], bins=bins, edgecolor='black', alpha=0.7, label='Second stop')
     plt.xlabel("Optimal Pit Lap")
     plt.ylabel("Frequency")
-    plt.title(f"Best 2-Stop Pit Lap Distribution ({n_simulations:,} simulations)")
+    plt.title(f"Best 2-Stop Pit Lap Distribution {title_end}")
     plt.axvline(x=(config['total_laps'] / 3), color='red', linestyle='--',
                 label='Deterministic optimum, stop 1')
     plt.axvline(x=(2 * config['total_laps'] / 3), color='red', linestyle='--',
@@ -415,66 +417,38 @@ def main():
     plt.savefig('monte_carlo_dist_medium_v1_2_stop.png', dpi=450, bbox_inches='tight')
     plt.close()
 
-    # pit laps split by compound, explains the double peaks in the histograms
-    bins = range(1, config['total_laps'])
-
-    soft_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
-    med_1stop   = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
-    hard_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
-    soft_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'soft']
-    med_pit1    = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'medium']
-    hard_pit1   = [p for p, c in zip(optimal_laps_2_stop_pit1, optimal_compounds_2_stop) if c[0] == 'hard']
-    soft_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'soft']
-    med_pit2    = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'medium']
-    hard_pit2   = [p for p, c in zip(optimal_laps_2_stop_pit2, optimal_compounds_2_stop) if c[1] == 'hard']
-
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
-    ax1.hist([soft_1stop, med_1stop, hard_1stop], bins=bins, stacked=True,
-            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
-    ax1.set_xlabel("Optimal Pit Lap")
-    ax1.set_ylabel("Frequency")
-    ax1.set_title("1-Stop: opening compound")
-    ax1.legend()
-
-    ax2.hist([soft_pit1, med_pit1, hard_pit1], bins=bins, stacked=True,
-            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
-    ax2.set_xlabel("Optimal Pit Lap")
-    ax2.set_ylabel("Frequency")
-    ax2.set_title("2-Stop First Stop: opening compound")
-    ax2.legend()
-
-    ax3.hist([soft_pit2, med_pit2, hard_pit2], bins=bins, stacked=True,
-            color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
-    ax3.set_xlabel("Optimal Pit Lap")
-    ax3.set_ylabel("Frequency")
-    ax3.set_title("2-Stop Second Stop: second stint compound")
-    ax3.legend()
-
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    titles = {'1-stop': "1-Stop: opening compound",
+              '2-stop first': "2-Stop First Stop: opening compound",
+              '2-stop second': "2-Stop Second Stop: second stint compound"}
+    for ax, (name, split) in zip(axes, s['by_compound'].items()):
+        ax.hist([split['soft'], split['medium'], split['hard']], bins=bins, stacked=True,
+                color=['red', 'gold', 'gray'], label=['S', 'M', 'H'], edgecolor='black', linewidth=0.3)
+        ax.set_xlabel("Optimal Pit Lap")
+        ax.set_ylabel("Frequency")
+        ax.set_title(titles[name])
+        ax.legend()
     plt.tight_layout()
     plt.savefig('pit_lap_by_compound.png', dpi=450, bbox_inches='tight')
     plt.close()
 
-    counts = Counter(optimal_laps)
+    counts = Counter(s['winner'])
     plt.bar(counts.keys(), counts.values())
     plt.xlabel("Optimal Strategy")
     plt.ylabel("Frequency")
-    plt.title(f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
+    plt.title(f"Best Pit Strategy Distribution {title_end}")
     plt.savefig('monte_carlo_dist_medium_v1_strategy.png', dpi=450, bbox_inches='tight')
     plt.close()
 
     print("\n--- Top 10 1-Stop Strategies ---")
-    pit_lap_counts_1 = Counter(winning_strategies_1_stop)
-    total_1stop_wins = len(winning_strategies_1_stop)
-    for i, ((pit, comp), freq) in enumerate(pit_lap_counts_1.most_common(10), 1):
+    for i, ((pit, comp), freq) in enumerate(s['top_1'], 1):
         print(f"{i:2}. Start: {comp[0][0].upper()} | Stop 1: Lap {pit} → {comp[1][0].upper()} | "
-            f"Freq: {freq} | Win Rate: {freq/total_1stop_wins*100:.1f}%")
+            f"Freq: {freq} | Win Rate: {freq/s['wins_1']*100:.1f}%")
 
     print("\n--- Top 10 2-Stop Strategies ---")
-    pit_lap_counts_2 = Counter(winning_strategies_2_stop)
-    total_2stop_wins = len(winning_strategies_2_stop)
-    for i, ((pit1, pit2, comp), freq) in enumerate(pit_lap_counts_2.most_common(10), 1):
+    for i, ((pit1, pit2, comp), freq) in enumerate(s['top_2'], 1):
         print(f"{i:2}. Start: {comp[0][0].upper()} | Stop 1: Lap {pit1} → {comp[1][0].upper()} | "
-            f"Stop 2: Lap {pit2} → {comp[2][0].upper()} | Freq: {freq} | Win Rate: {freq/total_2stop_wins*100:.1f}%")
+            f"Stop 2: Lap {pit2} → {comp[2][0].upper()} | Freq: {freq} | Win Rate: {freq/s['wins_2']*100:.1f}%")
 
 
 if __name__ == "__main__":

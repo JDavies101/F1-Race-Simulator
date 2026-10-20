@@ -24,7 +24,7 @@ After all the simulations you get a distribution of winning strategies rather th
 - Two search modes:
   - exhaustive tries every pit lap and compound combination
   - sampled tries every 1-stop, samples 2-stops at random, then refines the best 2-stop for each compound set by checking nearby pit laps. It's much faster and usually within a second of exhaustive
-- Presets for all 24 rounds of the 2026 calendar
+- Presets for the 2026 calendar
 - Seed input so runs can be repeated
 
 ## Output
@@ -53,12 +53,19 @@ python monte_carlo.py
 
 That runs the config in `main()` and saves the plots as PNGs.
 
+Tests need pytest (`pip install pytest`), then from the repo root:
+
+```bash
+python -m pytest -v
+```
+
 ## Files
 
 ```
 streamlit_app.py   web app
 monte_carlo.py     simulation engine, also runs standalone
 track_presets.py   settings for each 2026 round
+tests/             unit tests for the engine
 requirements.txt
 ```
 

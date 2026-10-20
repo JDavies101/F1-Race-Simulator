@@ -1,28 +1,9 @@
-# =============================================================================
-# F1 RACE STRATEGY SIMULATOR — STREAMLIT WEB APP
-# =============================================================================
-# Interactive front-end for the Monte Carlo race strategy simulator.
-# Users can adjust all race parameters via sidebar sliders, load track presets
-# for all 24 rounds of the 2026 F1 calendar, run parallel simulations, and
-# view interactive strategy distribution plots and lap time traces in real time.
+# Streamlit front end for the simulator.
 #
-# Architecture:
-#   - Sidebar: all config inputs (sliders, radio, expanders, track preset loader)
-#   - Run button: triggers parallel simulation via ProcessPoolExecutor
-#   - st.session_state: persists results across Streamlit reruns (slider moves)
-#   - Results section: metrics, strategy summary, Plotly plots, tables, download
-#   - Mobile toggle: uses st.container() vs st.columns() for layout switching
-#
-# Plot rendering:
-#   - All distribution/histogram/bar plots use Plotly for interactivity
-#   - Lap traces use matplotlib for compound shading and pit spike detail
-#   - Plotly plots can be downloaded via the camera icon on each chart
-#   - Lap traces are downloadable as PNG via the zip download button
-#
-# Key Streamlit behavior:
-#   Every user interaction reruns the entire script. Session state preserves
-#   results across reruns so plots don't reset when sliders are adjusted.
-# =============================================================================
+# Streamlit reruns this whole script on every interaction, so results are
+# kept in st.session_state to stop the plots resetting when a slider moves.
+# Charts are Plotly; the lap trace PNGs in the download zip are matplotlib
+# because Plotly image export needs kaleido, which Streamlit Cloud doesn't have.
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -36,36 +17,29 @@ from collections import Counter, defaultdict
 from monte_carlo import simulate_race, run_simulation, generate_race_events
 from track_presets import TRACK_PRESETS
 
-# -----------------------------------------------------------------------------
-# PAGE CONFIG
-# Must be the very first Streamlit call — throws an error otherwise.
-# 'wide' layout uses full browser width.
-# -----------------------------------------------------------------------------
+# has to be the first Streamlit call
 st.set_page_config(layout="wide", page_title="F1 Strategy Simulator")
 st.title("F1 Race Strategy Simulator")
 st.write("By Jake Davies")
 
-# =============================================================================
-# SIDEBAR: CONFIGURATION INPUTS
-# =============================================================================
+# Sidebar
 
 st.sidebar.header("Race Parameters")
 
-# Mobile layout toggle — switches between st.columns() and st.container()
 mobile_mode = st.sidebar.toggle("Mobile layout", value=False)
 
-# --- Track Preset Loader ---
-# Writes preset values into session_state and clears stale results on load.
+seed = st.sidebar.number_input("Random seed", 0, 1_000_000, 0, key='seed')
+
 track = st.sidebar.selectbox("Track Preset", list(TRACK_PRESETS.keys()))
 
+# loading a preset writes its values into session_state, which the sliders read from
 if track != "Custom" and st.sidebar.button("Load Preset"):
     preset = TRACK_PRESETS[track]
     for key, val in preset.items():
         st.session_state[key] = val
-    st.session_state.pop('results', None)  # clear results so stale plots don't show
+    st.session_state.pop('results', None)  # old results no longer match
     st.rerun()
 
-# --- Main Race Parameters ---
 base_lap_time = st.sidebar.slider("Base Lap Time (s)", 55, 150, st.session_state.get('base_lap_time', 80), key='base_lap_time')
 total_laps    = st.sidebar.slider("Total Laps", 40, 90, st.session_state.get('total_laps', 60), key='total_laps')
 pit_loss      = st.sidebar.slider("Pit Loss (s)", 15, 35, st.session_state.get('pit_loss', 25), key='pit_loss')
@@ -73,8 +47,7 @@ sc_chance_pct = st.sidebar.slider("Safety Car Chance (%)", 0, 100, st.session_st
 n_simulations = st.sidebar.slider("Simulations", 100, 10000, st.session_state.get('n_simulations', 500), step=100, key='n_simulations')
 search_method = st.sidebar.radio("Search Method", ["sampled", "exhaustive"])
 
-# --- Compound Settings Expander ---
-# Each slider has a unique key= to prevent Streamlit confusing identical labels.
+# labels repeat across compounds so each slider needs its own key
 with st.sidebar.expander("Compound Settings"):
     st.write("**Soft**")
     soft_offset = st.slider("Offset (s)", -3.0, 0.0, st.session_state.get('soft_offset', -1.0), step=0.1, key="soft_offset")
@@ -89,7 +62,6 @@ with st.sidebar.expander("Compound Settings"):
     hard_deg    = st.slider("Deg rate", 0.01, 0.10, st.session_state.get('hard_deg', 0.02), step=0.01, key="hard_deg")
     hard_max    = st.slider("Max laps", 30, 70, st.session_state.get('hard_max', 50), key="hard_max")
 
-# --- Traffic & Safety Car Expander ---
 with st.sidebar.expander("Traffic & Safety Car Settings"):
     base_traffic_prob = st.slider("Base traffic probability", 0.0, 1.0,
                                   st.session_state.get('base_traffic_prob', 0.4), step=0.05, key="base_traffic_prob")
@@ -101,7 +73,7 @@ with st.sidebar.expander("Traffic & Safety Car Settings"):
                                   st.session_state.get('sc_pit_loss', 12), key="sc_pit_loss")
     sc_base_lap_time  = st.slider("SC lap time (s)", 80, 120,
                                   st.session_state.get('sc_base_lap_time', 90), key="sc_lap_time")
-    vsc_chance_pct    = st.slider("VSC chance (%)", 0, 100, 
+    vsc_chance_pct    = st.slider("VSC chance (%)", 0, 100,
                                   st.session_state.get('vsc_chance_pct', 30), key='vsc_chance_pct')
     vsc_pit_loss      = st.slider("VSC pit loss (s)", 5, 25,
                                   st.session_state.get('vsc_pit_loss', 18), key='vsc_pit_loss')
@@ -110,49 +82,44 @@ with st.sidebar.expander("Traffic & Safety Car Settings"):
     mechanical_failure_prob = st.slider("Mechanical failure probability (per lap)", 0.000, 0.020,
                                         st.session_state.get('mechanical_failure_prob', 0.005),
                                         step=0.001, format="%.3f", key='mechanical_failure_prob')
-    
-# --- App description ---
+
 st.markdown("""
 This simulator uses **Monte Carlo methods** to find the optimal pit stop strategy for an F1 race.
 Rather than a single deterministic answer, it runs thousands of randomized race scenarios to produce
-a *distribution* of optimal strategies — reflecting the uncertainty real strategists face on race day.
+a *distribution* of optimal strategies, reflecting the uncertainty real strategists face on race day.
 """)
 
 with st.expander("How it works"):
     st.markdown("""
-    **The core idea**  
-    Every F1 race is different. Safety cars, traffic, and tire variability mean the "optimal" pit lap 
-    changes from race to race. Instead of finding one answer, this simulator asks: *across thousands 
+    **The core idea**
+    Every F1 race is different. Safety cars, traffic, and tire variability mean the "optimal" pit lap
+    changes from race to race. Instead of finding one answer, this simulator asks: *across thousands
     of random scenarios, which strategy wins most often?*
-    
+
     **Each simulation:**
     1. Generates a random safety car schedule for the race
     2. Evaluates candidate pit strategies against that scenario
     3. Records the best 1-stop and 2-stop strategy
-    
-    **Tire model**  
-    Each compound has a lap time offset vs the medium baseline, a degradation rate (seconds lost per lap), 
-    and a cliff — the age beyond which degradation triples, modelling real grip drop-off behavior.
-    
-    **Traffic model**  
-    After a pit stop, a car rejoins in traffic. The probability of being held up decays exponentially 
+
+    **Tire model**
+    Each compound has a lap time offset vs the medium baseline, a degradation rate (seconds lost per lap),
+    and a cliff: the age beyond which degradation triples, modelling real grip drop-off behavior.
+
+    **Traffic model**
+    After a pit stop, a car rejoins in traffic. The probability of being held up decays exponentially
     as the field spreads out over the stint, resetting at each stop.
-    
-    **Safety car**  
-    SC events reduce the effective pit loss — pitting under yellow is cheaper relative to cars staying out.
-    
-    **How to use it**  
-    1. Select a track preset from the sidebar or set parameters manually  
-    2. Adjust tire compounds, traffic, and SC settings if desired  
-    3. Choose number of simulations (more = smoother results, slower runtime)  
+
+    **Safety car**
+    SC events reduce the effective pit loss, since pitting under yellow is cheaper relative to cars staying out.
+
+    **How to use it**
+    1. Select a track preset from the sidebar or set parameters manually
+    2. Adjust tire compounds, traffic, and SC settings if desired
+    3. Choose number of simulations (more = smoother results, slower runtime)
     4. Hit **Run Simulation**
     """)
 
-# =============================================================================
-# CONFIG DICT
-# sc_chance converts per-race % to per-lap probability:
-#   sc_chance_pct / total_laps / 100
-# =============================================================================
+# sliders give a per-race %, the engine wants a per-lap probability
 config = {
     'base_lap_time':     base_lap_time,
     'pit_loss':          pit_loss,
@@ -176,34 +143,13 @@ config = {
     'n_strategies_sampled': 500,
 }
 
-# DPI for matplotlib lap trace figures only
-plot_dpi = 500
+plot_dpi = 500  # matplotlib download images only
 
-# =============================================================================
-# LAP TRACE PLOT FUNCTION — Plotly version
-# Returns an interactive Plotly figure with stint shading and hover tooltips.
-# Kept separate from Plotly distribution plots since it requires special
-# handling for vrect legend entries.
-# =============================================================================
 
 def plot_single_race_st(config, pit_laps, compounds):
-    """
-    Generate an interactive Plotly lap time trace for a single representative race.
+    """Plotly lap time trace for one race, stints shaded by compound and pit laps marked."""
 
-    Stint regions are shaded by compound color. Pit stop laps are marked with
-    vertical dashed lines. Hover shows lap number and lap time.
-
-    Parameters
-    ----------
-    config : dict
-    pit_laps : list of int
-    compounds : list of str
-
-    Returns
-    -------
-    fig : plotly Figure
-    """
-    
+    # retry so we don't plot a DNF
     for _ in range(20):
         sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
         result = simulate_race(pit_laps[0], compounds, sc_laps, config,
@@ -217,7 +163,7 @@ def plot_single_race_st(config, pit_laps, compounds):
 
     fig = go.Figure()
 
-    # Shade each stint and add invisible scatter trace for legend entry
+    # vrects don't show in the legend, so add an empty trace per stint for that
     for i, (start, end) in enumerate(zip(stint_boundaries, stint_boundaries[1:])):
         color = compound_colors[compounds[i]]
         fig.add_vrect(x0=start, x1=end, fillcolor=color, opacity=0.15,
@@ -228,12 +174,11 @@ def plot_single_race_st(config, pit_laps, compounds):
             name=f'Stint {i+1}: {compounds[i][0].upper()}'
         ))
 
-    # Pit stop vertical lines
     for pit in pit_laps:
         fig.add_vline(x=pit, line_dash='dash', line_color='red',
                       annotation_text=f'Pit lap {pit}')
 
-    # Lap time trace — royalblue works on both light and dark backgrounds
+    # royalblue reads fine on light and dark themes
     fig.add_trace(go.Scatter(
         x=list(range(1, config['total_laps'] + 1)),
         y=lap_times,
@@ -252,9 +197,6 @@ def plot_single_race_st(config, pit_laps, compounds):
     )
     return fig
 
-# =============================================================================
-# HELPER: stacked compound histogram (Plotly)
-# =============================================================================
 
 def make_compound_hist(soft, med, hard, title, total_laps):
     bin_spec = dict(start=1, end=total_laps, size=1)
@@ -269,16 +211,14 @@ def make_compound_hist(soft, med, hard, title, total_laps):
                       xaxis_title='Optimal Pit Lap', yaxis_title='Frequency')
     return fig
 
-# =============================================================================
-# RUN SIMULATION BUTTON
-# ProcessPoolExecutor integrates more cleanly with Streamlit than Pool.
-# as_completed() allows real-time progress bar updates.
-# =============================================================================
 
+# Run
+
+# using ProcessPoolExecutor over Pool so as_completed can drive the progress bar
 if st.button("Run Simulation"):
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
-    args = [(config, sim) for sim in range(n_simulations)]
+    args = [(config, seed + sim) for sim in range(n_simulations)]
     progress_bar = st.progress(0)
     status_text  = st.empty()
 
@@ -294,20 +234,17 @@ if st.button("Run Simulation"):
     st.session_state['config']  = config
     st.success(f"Done! {n_simulations} simulations complete.")
 
-# =============================================================================
-# RESULTS SECTION
-# Renders only when results exist in session_state.
-# Uses stored config so plots always match the simulation that was run.
-# =============================================================================
+
+# Results
+# uses the config saved with the results, not the current sliders
 
 if 'results' in st.session_state:
     with st.spinner("Preparing Results..."):
 
         sim_results  = st.session_state['results']
         config       = st.session_state['config']
-        plot_buffers = {}  # stores matplotlib lap trace PNGs for download
+        plot_buffers = {}  # lap trace PNGs for the download zip
 
-        # --- Unpack results ---
         optimal_laps              = []
         optimal_laps_1_stop       = []
         optimal_laps_2_stop_pit1  = []
@@ -316,13 +253,15 @@ if 'results' in st.session_state:
         optimal_compounds_2_stop  = []
         best_times_1_stop         = []
         best_times_2_stop         = []
-        winning_strategies_1_stop = []  # only when 1-stop beat 2-stop overall
-        winning_strategies_2_stop = []  # only when 2-stop beat 1-stop overall
-        
+        winning_strategies_1_stop = []  # only runs where 1-stop beat 2-stop
+        winning_strategies_2_stop = []  # only runs where 2-stop beat 1-stop
+
         total_dnfs = 0
 
         for best_time_1, best_time_2, best_1, best_2, _, _, dnf_count in sim_results:
             total_dnfs += dnf_count
+            if dnf_count:
+                continue
             pit1, c1         = best_1
             pit2a, pit2b, c2 = best_2
             best = min([(best_time_1, '1-stop', best_1),
@@ -344,9 +283,7 @@ if 'results' in st.session_state:
         avg_time_1stop = np.mean(best_times_1_stop)
         avg_time_2stop = np.mean(best_times_2_stop)
 
-        # --- Representative strategies ---
-        # Pulled from rank 1 of winning strategy counters so lap traces
-        # always match the strategy tables exactly.
+        # take the #1 strategy from the tables so the lap traces match them
         times_by_strategy_1 = defaultdict(list)
         times_by_strategy_2 = defaultdict(list)
         for pit, comp, t in winning_strategies_1_stop:
@@ -358,7 +295,7 @@ if 'results' in st.session_state:
 
         if pit_lap_counts_1:
             top_freq = pit_lap_counts_1.most_common(1)[0][1]
-            # among all strategies with top frequency, pick lowest avg time
+            # ties broken by lowest average time
             top_candidates = [k for k, v in pit_lap_counts_1.items() if v == top_freq]
             top_1stop = min(top_candidates, key=lambda k: np.mean(times_by_strategy_1[k]))
             best_1stop_pit       = top_1stop[0]
@@ -379,27 +316,23 @@ if 'results' in st.session_state:
             best_2stop_pit2      = 2 * config['total_laps'] // 3
             best_2stop_compounds = list(Counter(optimal_compounds_2_stop).most_common(1)[0][0])
 
-        # =========================================================================
-        # METRICS ROW
-        # =========================================================================
+        # Metrics
         if mobile_mode:
             st.write("Most Common Strategy", most_common_strategy)
-            st.write("1-Stop Win Rate", f"{optimal_laps.count('1-stop')}/{n_simulations}")
-            st.write("2-Stop Win Rate", f"{optimal_laps.count('2-stop')}/{n_simulations}")
+            st.write("1-Stop Win Rate", f"{optimal_laps.count('1-stop')}/{n_simulations - total_dnfs}")
+            st.write("2-Stop Win Rate", f"{optimal_laps.count('2-stop')}/{n_simulations - total_dnfs}")
             st.write("Avg Best 1-Stop Time", f"{avg_time_1stop:.1f}s")
             st.write("Avg Best 2-Stop Time", f"{avg_time_2stop:.1f}s")
         else:
             col1, col2, col3, col4, col5, col6 = st.columns(6)
             col1.metric("Most Common Strategy",  most_common_strategy)
-            col2.metric("1-Stop Win Rate",        f"{optimal_laps.count('1-stop')}/{n_simulations}")
-            col3.metric("2-Stop Win Rate",        f"{optimal_laps.count('2-stop')}/{n_simulations}")
+            col2.metric("1-Stop Win Rate",        f"{optimal_laps.count('1-stop')}/{n_simulations - total_dnfs}")
+            col3.metric("2-Stop Win Rate",        f"{optimal_laps.count('2-stop')}/{n_simulations - total_dnfs}")
             col4.metric("Avg Best 1-Stop Time",   f"{avg_time_1stop:.1f}s")
             col5.metric("Avg Best 2-Stop Time",   f"{avg_time_2stop:.1f}s")
             col6.metric("Total DNFs", total_dnfs)
 
-        # =========================================================================
-        # STRATEGY SUMMARY
-        # =========================================================================
+        # Strategy summary
         st.subheader("Strategy Summary")
         if mobile_mode:
             c1, c2 = st.container(), st.container()
@@ -412,9 +345,7 @@ if 'results' in st.session_state:
             st.write(f"**Best 2-Stop:** Pit laps {best_2stop_pit1}/{best_2stop_pit2}, compounds {' → '.join([c[0].upper() for c in best_2stop_compounds])}")
             st.write(f"**Avg race time:** {avg_time_2stop:.1f}s ({avg_time_2stop//60:.0f}m {avg_time_2stop%60:.1f}s)")
 
-        # =========================================================================
-        # STRATEGY DISTRIBUTION PLOT — centered on desktop
-        # =========================================================================
+        # 1-stop vs 2-stop, centered on desktop
         if mobile_mode:
             center = st.container()
         else:
@@ -427,10 +358,7 @@ if 'results' in st.session_state:
                          title=f"Best Pit Strategy Distribution ({n_simulations:,} simulations)")
             st.plotly_chart(fig, width='stretch')
 
-        # =========================================================================
-        # PIT LAP DISTRIBUTION PLOTS
-        # Vertical lines show the deterministic optimum (equal stint split).
-        # =========================================================================
+        # Pit lap distributions, red lines are the even stint split
         if mobile_mode:
             c1, c2 = st.container(), st.container()
         else:
@@ -451,7 +379,7 @@ if 'results' in st.session_state:
             st.subheader("2-Stop Pit Lap Distribution")
             bin_start = 1
             bin_end = config['total_laps']
-            bin_size = 1  # one bin per lap
+            bin_size = 1
             fig = go.Figure()
             fig.add_trace(go.Histogram(x=optimal_laps_2_stop_pit1, name='First stop',
                                     opacity=0.7,
@@ -470,10 +398,7 @@ if 'results' in st.session_state:
                           annotation_text='Stop 2 optimum')
             st.plotly_chart(fig, width='stretch')
 
-        # =========================================================================
-        # PIT LAP BY COMPOUND — stacked histograms
-        # Explains why pit lap distributions are often bimodal.
-        # =========================================================================
+        # Pit laps split by compound, explains the double peaks above
         soft_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'soft']
         med_1stop  = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'medium']
         hard_1stop = [p for p, c in zip(optimal_laps_1_stop, optimal_compounds_1_stop) if c[0] == 'hard']
@@ -492,21 +417,18 @@ if 'results' in st.session_state:
 
         with c1:
             st.plotly_chart(make_compound_hist(soft_1stop, med_1stop, hard_1stop,
-                            "1-Stop — opening compound", config['total_laps']),
+                            "1-Stop: opening compound", config['total_laps']),
                             width='stretch')
         with c2:
             st.plotly_chart(make_compound_hist(soft_pit1, med_pit1, hard_pit1,
-                            "2-Stop First Stop — opening compound", config['total_laps']),
+                            "2-Stop First Stop: opening compound", config['total_laps']),
                             width='stretch')
         with c3:
             st.plotly_chart(make_compound_hist(soft_pit2, med_pit2, hard_pit2,
-                            "2-Stop Second Stop — second stint compound", config['total_laps']),
+                            "2-Stop Second Stop: second stint compound", config['total_laps']),
                             width='stretch')
 
-        # =========================================================================
-        # COMPOUND DISTRIBUTION BAR CHARTS
-        # Top 6 compound combos by frequency.
-        # =========================================================================
+        # Top 6 compound combos
         if mobile_mode:
             c1, c2 = st.container(), st.container()
         else:
@@ -534,12 +456,7 @@ if 'results' in st.session_state:
                          title=f"Best 2-Stop Compound Distribution ({n_simulations:,} simulations)")
             st.plotly_chart(fig, width='stretch')
 
-        # =========================================================================
-        # LAP TRACES — Plotly interactive
-        # Stint regions shaded by compound, pit stops marked with vlines.
-        # Lap trace in royalblue — readable on both light and dark backgrounds.
-        # These are also saved to plot_buffers as matplotlib PNGs for download.
-        # =========================================================================
+        # Lap traces
         if mobile_mode:
             c1, c2 = st.container(), st.container()
         else:
@@ -555,8 +472,7 @@ if 'results' in st.session_state:
             fig = plot_single_race_st(config, [best_2stop_pit1, best_2stop_pit2], best_2stop_compounds)
             st.plotly_chart(fig, width='stretch')
 
-        # Generate matplotlib versions of traces for PNG download
-        # (Plotly PNG export requires kaleido which isn't available on Streamlit Cloud)
+        # matplotlib copies of the traces for the zip (no kaleido on Streamlit Cloud)
         compound_colors_mpl = {'soft': 'red', 'medium': 'yellow', 'hard': 'gray'}
 
         for trace_key, pit_laps, compounds in [
@@ -589,16 +505,11 @@ if 'results' in st.session_state:
             plot_buffers[trace_key] = buf
             plt.close(fig_mpl)
 
-        # =========================================================================
-        # STRATEGY TABLES
-        # Built from winning_strategies only — win rate is within strategy subset.
-        # Tables use same rank 1 strategy as lap traces for consistency.
-        # =========================================================================
+        # Strategy tables, win rate is within that strategy type only
         st.subheader("Strategy Tables")
 
         total_1stop_wins = len(winning_strategies_1_stop)
         rows_1 = []
-        # table building — strip the time from the tuple
         pit_lap_counts_1 = Counter({(pit, comp): len(v) for (pit, comp), v in times_by_strategy_1.items()})
         for (pit, comp), freq in pit_lap_counts_1.most_common(10):
             rows_1.append({
@@ -613,7 +524,6 @@ if 'results' in st.session_state:
 
         total_2stop_wins = len(winning_strategies_2_stop)
         rows_2 = []
-        # table building — strip the time from the tuple
         pit_lap_counts_2 = Counter({k: len(v) for k, v in times_by_strategy_2.items()})
         for (pit1, pit2, comp), freq in pit_lap_counts_2.most_common(10):
             rows_2.append({
@@ -644,11 +554,7 @@ if 'results' in st.session_state:
             st.caption("Win rate = % of wins within this strategy type, not overall race wins")
             st.dataframe(df_2stop, width='stretch')
 
-        # =========================================================================
-        # DOWNLOAD SECTION
-        # Plotly charts can be downloaded individually via the camera icon.
-        # Lap traces (matplotlib PNG) and CSV tables are bundled in a zip.
-        # =========================================================================
+        # Downloads: tables, parameters and lap trace PNGs in one zip
         csv_1stop  = df_1stop.to_csv().encode('utf-8')
         csv_2stop  = df_2stop.to_csv().encode('utf-8')
 
@@ -669,7 +575,6 @@ if 'results' in st.session_state:
             dl_1stop_trace = st.checkbox("1-Stop Lap Trace (PNG)",  value=True)
             dl_2stop_trace = st.checkbox("2-Stop Lap Trace (PNG)",  value=True)
 
-        # Map buffer keys to checkbox variables
         checkbox_map = {
             '1-Stop Lap Trace': dl_1stop_trace,
             '2-Stop Lap Trace': dl_2stop_trace,

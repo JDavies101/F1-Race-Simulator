@@ -1,7 +1,6 @@
-# track_presets.py
-# 2026 F1 Calendar - Race configuration presets
-# Lap times and tire parameters are approximate based on historical data
-# and 2026 car estimates (~2s slower than 2025 per regulation changes)
+# Presets for each round of the 2026 calendar.
+# Numbers are rough estimates from past races, with lap times bumped ~2s
+# for the 2026 regs. Not from real telemetry.
 
 TRACK_PRESETS = {
     "Custom": None,

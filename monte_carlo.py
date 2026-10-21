@@ -131,6 +131,17 @@ def valid_compounds(config):
     return valid_1stop, valid_2stop
 
 
+def one_stop_keys(total_laps, valid_1stop):
+    """Every 1-stop searched: (pit_lap, compounds), stopping no later than 6 laps from the end."""
+    return [(p, c) for p in range(1, total_laps - 5) for c in valid_1stop]
+
+
+def two_stop_keys(total_laps, valid_2stop):
+    """Every 2-stop searched exhaustively: (pit_lap1, pit_lap2, compounds)."""
+    return [(p1, p2, c) for p1 in range(1, total_laps - 5)
+            for p2 in range(p1 + 1, total_laps - 2) for c in valid_2stop]
+
+
 def calm_optimum(config):
     """
     Best 1-stop and 2-stop on a race with no SC/VSC, traffic or noise,
@@ -143,8 +154,8 @@ def calm_optimum(config):
     calm = {'pit': np.zeros(laps), 'deg': np.zeros(laps), 'traffic': np.ones(laps)}
     valid_1stop, valid_2stop = valid_compounds(config)
 
-    ones = [(p, c) for p in range(1, laps - 5) for c in valid_1stop]
-    twos = [(p1, p2, c) for p1 in range(1, laps - 5) for p2 in range(p1 + 1, laps - 2) for c in valid_2stop]
+    ones = one_stop_keys(laps, valid_1stop)
+    twos = two_stop_keys(laps, valid_2stop)
     t1 = race_totals([(p, None, c) for p, c in ones], green, config, calm)
     t2 = race_totals(twos, green, config, calm)
     return ones[int(np.argmin(t1))], twos[int(np.argmin(t2))]
@@ -169,8 +180,7 @@ def run_simulation(args):
     sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], 
                                    config['vsc_chance'], rng)
 
-    p_dnf = 1 - (1 - config['mechanical_failure_prob']) ** config['total_laps']
-    car_dnf = rng.random() < p_dnf
+    car_dnf = rng.random() < dnf_rate(config['mechanical_failure_prob'], config['total_laps'])
     dnf_count = 1 if car_dnf else 0
     if car_dnf:
         dnf_lap = rng.integers(1, config['total_laps'])
@@ -192,14 +202,13 @@ def run_simulation(args):
     noise = make_noise(config['total_laps'], rng)
 
     # every 1-stop in both modes, it's only a few hundred races
-    keys_1 = [(pit_lap, c) for pit_lap in range(1, config['total_laps'] - 5) for c in valid_1stop]
+    keys_1 = one_stop_keys(config['total_laps'], valid_1stop)
     totals = race_totals([(p, None, c) for p, c in keys_1], sc_laps, config, noise, car_dnf)
     results_1_stop.update(zip(keys_1, totals.tolist()))
 
     if config['search_method'] == 'exhaustive':
         # every 2-stop too, slow but finds the real best
-        run_2stops([(p1, p2, c) for p1 in range(1, config['total_laps'] - 5)
-                    for p2 in range(p1 + 1, config['total_laps'] - 2) for c in valid_2stop])
+        run_2stops(two_stop_keys(config['total_laps'], valid_2stop))
 
     else:
         # random 2-stops, then refine
@@ -338,17 +347,20 @@ def compound_label(comps):
     return ' → '.join(c[0].upper() for c in comps)
 
 
+def trace_race(config, pit_laps, compounds):
+    """
+    Lap times for one fresh random race using the given strategy, for the lap
+    trace plots. No DNF is drawn, so the trace is always a full race.
+    """
+    events = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
+    return simulate_race(pit_laps[0], compounds, events, config,
+                         pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)['lap_times']
+
+
 def plot_single_race(config, pit_laps, compounds, filename='lap_trace.png'):
     """Save a lap time plot of one race using the given strategy, with stints shaded by compound."""
 
-    # retry a few times so we don't end up plotting a DNF
-    for _ in range(20):
-        sc_laps = generate_race_events(config['total_laps'], config['sc_chance'], config['vsc_chance'])
-        result = simulate_race(pit_laps[0], compounds, sc_laps, config,
-                            pit_lap2=pit_laps[1] if len(pit_laps) > 1 else None)
-        if not result['dnf']:
-            break
-    lap_times = result['lap_times']
+    lap_times = trace_race(config, pit_laps, compounds)
 
     compound_colors = {'soft': 'red', 'medium': 'yellow', 'hard': 'white'}
 
@@ -427,7 +439,7 @@ def main():
 
     n_simulations = 1000
 
-    with Pool(processes=12) as pool:
+    with Pool() as pool:   # one worker per CPU core
         args = [(config, sim) for sim in range(n_simulations)]
         sim_results = []
         for i, result in enumerate(pool.imap(run_simulation, args)):

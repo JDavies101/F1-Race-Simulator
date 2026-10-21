@@ -28,17 +28,43 @@ After all the simulations you get a distribution of winning strategies rather th
 - Two search modes:
   - exhaustive tries every pit lap and compound combination
   - sampled tries every 1-stop, samples 2-stops at random, then refines the best 2-stop for each compound set by checking nearby pit laps. It's much faster and usually within a second of exhaustive
-- Presets for the 2026 calendar
+- Presets for the 2026 calendar, fitted from real 2026 race data where the data allowed (see below)
 - Seed input so runs can be repeated
+- The simulation count defaults to what's needed for ±3% on the 1-stop/2-stop split, allowing for DNFs
 
 ## Output
 
-- 1-stop vs 2-stop win counts
+- 1-stop vs 2-stop win counts, with the margin on the split at 95% confidence
 - Pit lap distributions, also split by starting compound (this explains the double peaks), with the best stops for a race with no SC, traffic or noise marked for reference
 - Most common compound combinations
 - A lap time trace for the top 1-stop and 2-stop
 - Top 10 tables for each strategy type
 - A zip download with the tables, parameters and lap traces
+
+## Calibrated from real races
+
+`calibrate.py` fits the presets from 2026 race laps using [FastF1](https://github.com/theOehrly/Fast-F1). It keeps clean green-flag laps on dry tires, skips races with too few of them, and fits:
+
+- **Compound pace** by Pirelli compound (C1 to C5) across all races at once, since a "soft" is a different tire from track to track
+- **Degradation and base lap time** for each race on its own, since wear depends on the track as much as the tire
+- **Fuel effect**, one value shared by every race
+
+A fitted value is only used if it comes from enough laps, has the right sign and is clear of the noise. Everything else keeps the hand-set estimate in `track_presets.py`. The fitted values go to `calibrated_presets.json`, which `track_presets.py` applies when it loads.
+
+What the 2026 data showed:
+
+- Fuel costs about 0.035s per lap of fuel on board
+- Neighbouring compounds are closer than the usual estimates: C3 and C4 are about the same pace, C2 is about 0.5s slower than C3 and C5 about 0.15s faster than C4
+- Race to race, compound gaps vary by about 0.3s, more than any single race's fit suggests
+- Soft degradation never passed the checks. Softs mostly run short early stints on used tires, which makes their wear hard to separate from the race phase
+
+Running it needs an F1 TV Access account, since F1 put its timing archive behind a login in October 2026:
+
+```bash
+pip install -r requirements-dev.txt
+python -m fastf1 auth f1tv --authenticate
+python calibrate.py
+```
 
 ## Running it
 
@@ -66,11 +92,14 @@ python -m pytest -v
 ## Files
 
 ```
-streamlit_app.py   web app
-monte_carlo.py     simulation engine, also runs standalone
-track_presets.py   settings for each 2026 round
-tests/             unit tests for the engine
+streamlit_app.py          web app
+monte_carlo.py            simulation engine, also runs standalone
+track_presets.py          settings for each 2026 round
+calibrate.py              fits presets from real race data, not used by the app
+calibrated_presets.json   fitted values applied over track_presets.py
+tests/                    unit tests
 requirements.txt
+requirements-dev.txt      extra packages for calibrate.py
 ```
 
 ## Parameters
@@ -97,7 +126,7 @@ requirements.txt
 Next:
 - Weather that changes between dry, damp and wet during the race
 - Track temperature tied to the weather
-- Track rubbering in over the race
+- Soft compound data from practice long runs, where teams run fresh softs over many laps
 
 Long term:
 - Separate degradation for each tire
@@ -107,7 +136,8 @@ Long term:
 ## Limitations
 
 - Only one car, so no undercut/overcut or real traffic from other cars
-- Tire numbers are estimates, not telemetry
+- Presets are fitted from one season of race laps. Soft degradation, tire cliffs and tracks without clean races still use estimates
+- Compound pace is an average across races and won't match any single race
 - Safety cars happen at random laps rather than being caused by anything
 
 ## Author

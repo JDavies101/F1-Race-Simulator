@@ -1,0 +1,115 @@
+{
+  "Australia (Melbourne)": {
+    "base_lap_time": 83.6,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.043,
+    "hard_offset": 0.0,
+    "soft_offset": -0.16
+  },
+  "Austria (Spielberg)": {
+    "base_lap_time": 70.9,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.073,
+    "hard_offset": 0.0,
+    "med_deg": 0.081,
+    "soft_offset": -0.16
+  },
+  "Azerbaijan (Baku)": {
+    "base_lap_time": 107.1,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.0,
+    "med_deg": 0.039,
+    "soft_deg": 0.022,
+    "soft_offset": -0.16
+  },
+  "Barcelona-Catalunya": {
+    "base_lap_time": 81.1,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.097,
+    "hard_offset": 0.54,
+    "med_deg": 0.168,
+    "soft_offset": 0.0
+  },
+  "Belgium (Spa)": {
+    "base_lap_time": 109.6,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.037,
+    "hard_offset": 0.54,
+    "soft_offset": 0.0
+  },
+  "Canada (Montreal)": {
+    "base_lap_time": 76.0,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.0,
+    "soft_offset": -0.16
+  },
+  "China (Shanghai)": {
+    "base_lap_time": 96.1,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.54,
+    "soft_offset": 0.0
+  },
+  "Great Britain (Silverstone)": {
+    "base_lap_time": 93.4,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.049,
+    "hard_offset": 0.0,
+    "med_deg": 0.063,
+    "soft_offset": -0.54
+  },
+  "Hungary (Budapest)": {
+    "base_lap_time": 84.0,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.059,
+    "hard_offset": 0.0,
+    "med_deg": 0.077,
+    "soft_deg": 0.052,
+    "soft_offset": -0.16
+  },
+  "Italy (Monza)": {
+    "base_lap_time": 85.2,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.016,
+    "hard_offset": 0.0,
+    "med_deg": 0.024,
+    "soft_offset": -0.16
+  },
+  "Japan (Suzuka)": {
+    "base_lap_time": 94.6,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.0,
+    "med_deg": 0.033,
+    "soft_offset": -0.54
+  },
+  "Miami": {
+    "base_lap_time": 93.0,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.047,
+    "hard_offset": 0.0,
+    "med_deg": 0.034,
+    "soft_offset": -0.16
+  },
+  "Netherlands (Zandvoort)": {
+    "base_lap_time": 75.9,
+    "fuel_effect": 0.034,
+    "hard_deg": 0.037,
+    "hard_offset": 0.54,
+    "med_deg": 0.069,
+    "soft_deg": 0.055,
+    "soft_offset": 0.0
+  },
+  "Singapore": {
+    "base_lap_time": 97.0,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.0,
+    "med_deg": 0.054,
+    "soft_deg": 0.068,
+    "soft_offset": -0.16
+  },
+  "Spain (Madrid)": {
+    "base_lap_time": 98.2,
+    "fuel_effect": 0.034,
+    "hard_offset": 0.54,
+    "soft_offset": 0.0
+  }
+}

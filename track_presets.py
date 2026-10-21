@@ -1,6 +1,7 @@
 # Presets for each round of the 2026 calendar.
-# Numbers are rough estimates from past races, with lap times bumped ~2s
-# for the 2026 regs. Not from real telemetry.
+# The numbers below are hand-set estimates. Where 2026 race data supported
+# it, calibrate.py fits better values and saves them to
+# calibrated_presets.json, which overrides these when this file loads.
 
 TRACK_PRESETS = {
     "Custom": None,
@@ -187,6 +188,19 @@ TRACK_PRESETS = {
         'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.002,
     },
 
+    # Monza, between the Dutch and Madrid rounds
+    "Italy (Monza)": {
+        'base_lap_time': 82, 'total_laps': 53, 'pit_loss': 24,
+        'sc_chance_pct': 30,
+        'base_traffic_prob': 0.3, 'spread_rate': 15, 'traffic_time_loss': 0.4,  # slipstream makes passing easy
+        'sc_pit_loss': 11, 'sc_base_lap_time': 92,
+        'soft_offset': -0.6, 'soft_deg': 0.07, 'soft_max': 18,  # low deg, few corners
+        'med_offset': 0.0,  'med_deg': 0.04, 'med_max': 35,
+        'hard_offset': 0.6, 'hard_deg': 0.02, 'hard_max': 50,
+        'vsc_chance_pct': 30, 'vsc_base_lap_time': 88,
+        'vsc_pit_loss': 17, 'mechanical_failure_prob': 0.002,
+    },
+
     # Round 15 - September 13
     "Spain (Madrid)": {
         'base_lap_time': 90, 'total_laps': 55, 'pit_loss': 25,  # new street circuit
@@ -304,3 +318,37 @@ TRACK_PRESETS = {
         'vsc_pit_loss': 18, 'mechanical_failure_prob': 0.001,
     },
 }
+
+
+# fitted values from calibrate.py override the estimates above where the
+# data supported them
+import json
+import os
+
+FITTED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'calibrated_presets.json')
+
+
+def apply_fitted(presets, path):
+    """
+    Override preset values with the fitted ones in path, if it exists. Only
+    keys a preset already has, or the fuel and wear settings the presets
+    leave to the sliders, are changed, so a typo in the file can't add
+    settings the app doesn't know about. Returns the names that were updated.
+    """
+    extra = {'fuel_effect', 'fuel_wear', 'dirty_air_wear'}
+    updated = []
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as f:
+            for name, values in json.load(f).items():
+                preset = presets.get(name)
+                if preset:
+                    preset.update({k: v for k, v in values.items() if k in preset or k in extra})
+                    updated.append(name)
+    # the app's base lap time slider takes decimals, so keep these as floats
+    for preset in presets.values():
+        if preset:
+            preset['base_lap_time'] = float(preset['base_lap_time'])
+    return updated
+
+
+apply_fitted(TRACK_PRESETS, FITTED_PATH)

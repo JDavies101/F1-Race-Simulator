@@ -14,7 +14,7 @@ import io
 import zipfile
 from collections import Counter
 from monte_carlo import (simulate_race, run_simulation, generate_race_events, summarize,
-                         compound_label, calm_optimum)
+                         compound_label, calm_optimum, dnf_rate, sims_needed, win_share_margin)
 from track_presets import TRACK_PRESETS
 
 # has to be the first Streamlit call
@@ -38,33 +38,44 @@ if track != "Custom" and st.sidebar.button("Load Preset"):
     for key, val in preset.items():
         st.session_state[key] = val
     st.session_state.pop('results', None)  # old results no longer match
+    st.session_state.pop('n_simulations', None)  # back to the recommended count for this track
     st.rerun()
 
-base_lap_time = st.sidebar.slider("Base Lap Time (s)", 55, 150, st.session_state.get('base_lap_time', 80), key='base_lap_time')
+base_lap_time = st.sidebar.slider("Base Lap Time (s)", 55.0, 150.0, float(st.session_state.get('base_lap_time', 80)), step=0.1, key='base_lap_time')
 total_laps    = st.sidebar.slider("Total Laps", 40, 90, st.session_state.get('total_laps', 60), key='total_laps')
 pit_loss      = st.sidebar.slider("Pit Loss (s)", 15, 35, st.session_state.get('pit_loss', 25), key='pit_loss')
 sc_chance_pct = st.sidebar.slider("Safety Car Chance (%)", 0, 100, st.session_state.get('sc_chance_pct', 50), key='sc_chance_pct')
-n_simulations = st.sidebar.slider("Simulations", 100, 10000, st.session_state.get('n_simulations', 500), step=100, key='n_simulations')
+# enough runs for +-3% on the 1-stop/2-stop split. the failure slider comes
+# later in the sidebar, so read its last value from session_state
+expected_dnf = dnf_rate(st.session_state.get('mechanical_failure_prob', 0.002), total_laps)
+recommended = sims_needed(margin=0.03, dnf=expected_dnf)
+default_sims = min(10000, max(100, -(-recommended // 100) * 100))   # round up to a slider step
+n_simulations = st.sidebar.slider("Simulations", 100, 10000, st.session_state.get('n_simulations', default_sims), step=100, key='n_simulations')
+worst_margin = 1.96 * 0.5 / (n_simulations * (1 - expected_dnf)) ** 0.5
+st.sidebar.caption(f"About {recommended:,} gives ±3% on the 1-stop/2-stop split, allowing for "
+                   f"~{expected_dnf:.0%} DNFs. {n_simulations:,} gives up to ±{worst_margin:.1%}.")
 search_method = st.sidebar.radio("Search Method", ["sampled", "exhaustive"])
+if search_method == "exhaustive":
+    st.sidebar.caption("Exhaustive needs the same number of simulations, but each takes about 12x longer.")
 
 # labels repeat across compounds so each slider needs its own key
 with st.sidebar.expander("Compound Settings"):
     st.write("**Soft**")
     soft_offset = st.slider("Offset (s)", -3.0, 0.0, st.session_state.get('soft_offset', -0.6), step=0.1, key="soft_offset")
-    soft_deg    = st.slider("Deg rate", 0.01, 0.15, st.session_state.get('soft_deg', 0.08), step=0.01, key="soft_deg")
+    soft_deg    = st.slider("Deg rate", 0.005, 0.20, st.session_state.get('soft_deg', 0.08), step=0.005, key="soft_deg")
     soft_max    = st.slider("Max laps", 5, 30, st.session_state.get('soft_max', 15), key="soft_max")
     st.write("**Medium**")
     med_offset  = st.slider("Offset (s)", -1.0, 1.0, st.session_state.get('med_offset', 0.0), step=0.1, key="med_offset")
-    med_deg     = st.slider("Deg rate", 0.01, 0.15, st.session_state.get('med_deg', 0.05), step=0.01, key="med_deg")
+    med_deg     = st.slider("Deg rate", 0.005, 0.20, st.session_state.get('med_deg', 0.05), step=0.005, key="med_deg")
     med_max     = st.slider("Max laps", 20, 50, st.session_state.get('med_max', 35), key="med_max")
     st.write("**Hard**")
     hard_offset = st.slider("Offset (s)", 0.0, 3.0, st.session_state.get('hard_offset', 0.6), step=0.1, key="hard_offset")
-    hard_deg    = st.slider("Deg rate", 0.01, 0.10, st.session_state.get('hard_deg', 0.02), step=0.01, key="hard_deg")
+    hard_deg    = st.slider("Deg rate", 0.005, 0.20, st.session_state.get('hard_deg', 0.02), step=0.005, key="hard_deg")
     hard_max    = st.slider("Max laps", 30, 70, st.session_state.get('hard_max', 50), key="hard_max")
 
 with st.sidebar.expander("Fuel Settings"):
     fuel_effect = st.slider("Fuel effect (s per lap of fuel)", 0.0, 0.10,
-                            st.session_state.get('fuel_effect', 0.03), step=0.01, key='fuel_effect')
+                            st.session_state.get('fuel_effect', 0.035), step=0.005, key='fuel_effect')
     fuel_wear   = st.slider("Full tank tire wear (extra laps per lap)", 0.0, 1.0,
                             st.session_state.get('fuel_wear', 0.3), step=0.05, key='fuel_wear')
 
@@ -290,6 +301,10 @@ if 'results' in st.session_state:
             col4.metric("Avg Best 1-Stop Time",   f"{avg_time_1stop:.1f}s")
             col5.metric("Avg Best 2-Stop Time",   f"{avg_time_2stop:.1f}s")
             col6.metric("Total DNFs", s['total_dnfs'])
+
+        share_1 = s['wins_1'] / n_finished
+        st.caption(f"1-stop won {share_1:.0%} ± {win_share_margin(s['wins_1'], n_finished):.1%} "
+                   f"of {n_finished:,} finished races (95% confidence)")
 
         # Strategy summary
         st.subheader("Strategy Summary")

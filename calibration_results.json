@@ -1,0 +1,333 @@
+{
+  "fuel": 0.0345,
+  "fuel_se": 0.0013,
+  "rmse": 0.542,
+  "races": {
+    "Australian Grand Prix": {
+      "key": "Australia",
+      "clean_fraction": 0.67,
+      "laps": {
+        "C3": 474,
+        "C4": 205,
+        "C5": 93
+      }
+    },
+    "Chinese Grand Prix": {
+      "key": "China",
+      "clean_fraction": 0.73,
+      "laps": {
+        "C2": 578,
+        "C3": 142,
+        "C4": 14
+      }
+    },
+    "Japanese Grand Prix": {
+      "key": "Japan",
+      "clean_fraction": 0.77,
+      "laps": {
+        "C1": 482,
+        "C2": 418
+      }
+    },
+    "Miami Grand Prix": {
+      "key": "Miami",
+      "clean_fraction": 0.74,
+      "laps": {
+        "C3": 412,
+        "C4": 301,
+        "C5": 49
+      }
+    },
+    "Canadian Grand Prix": {
+      "key": "Canada",
+      "clean_fraction": 0.57,
+      "laps": {
+        "C4": 432,
+        "C5": 283,
+        "C3": 58
+      }
+    },
+    "Monaco Grand Prix": {
+      "key": "Monaco",
+      "clean_fraction": 0.36,
+      "laps": {
+        "C4": 237,
+        "C3": 176,
+        "C5": 99
+      }
+    },
+    "Barcelona Grand Prix": {
+      "key": "Barcelona",
+      "clean_fraction": 0.66,
+      "laps": {
+        "C2": 568,
+        "C3": 190,
+        "C4": 66
+      }
+    },
+    "Austrian Grand Prix": {
+      "key": "Austria",
+      "clean_fraction": 0.75,
+      "laps": {
+        "C3": 516,
+        "C4": 438,
+        "C5": 116
+      }
+    },
+    "British Grand Prix": {
+      "key": "British",
+      "clean_fraction": 0.66,
+      "laps": {
+        "C2": 400,
+        "C1": 345,
+        "C3": 10
+      }
+    },
+    "Belgian Grand Prix": {
+      "key": "Belgium",
+      "clean_fraction": 0.72,
+      "laps": {
+        "C2": 463,
+        "C3": 148,
+        "C4": 52
+      }
+    },
+    "Hungarian Grand Prix": {
+      "key": "Hungary",
+      "clean_fraction": 0.71,
+      "laps": {
+        "C3": 534,
+        "C5": 245,
+        "C4": 210
+      }
+    },
+    "Dutch Grand Prix": {
+      "key": "Dutch",
+      "clean_fraction": 0.63,
+      "laps": {
+        "C2": 457,
+        "C4": 283,
+        "C3": 162
+      }
+    },
+    "Italian Grand Prix": {
+      "key": "Italy",
+      "clean_fraction": 0.76,
+      "laps": {
+        "C3": 448,
+        "C4": 351,
+        "C5": 49
+      }
+    },
+    "Spanish Grand Prix": {
+      "key": "Spain",
+      "clean_fraction": 0.68,
+      "laps": {
+        "C2": 640,
+        "C3": 90,
+        "C4": 44
+      }
+    },
+    "Azerbaijan Grand Prix": {
+      "key": "Azerbaijan",
+      "clean_fraction": 0.64,
+      "laps": {
+        "C4": 359,
+        "C5": 323
+      }
+    },
+    "Bahrain Grand Prix": {
+      "key": "Bahrain",
+      "clean_fraction": 0.34,
+      "laps": {
+        "C2": 185,
+        "C4": 136,
+        "C3": 74
+      }
+    },
+    "Singapore Grand Prix": {
+      "key": "Singapore",
+      "clean_fraction": 0.73,
+      "laps": {
+        "C5": 565,
+        "C4": 380
+      }
+    }
+  },
+  "offsets": {
+    "C1": {
+      "value": 0.557,
+      "se": 0.105
+    },
+    "C2": {
+      "value": 0.539,
+      "se": 0.052
+    },
+    "C4": {
+      "value": -0.009,
+      "se": 0.039
+    },
+    "C5": {
+      "value": -0.171,
+      "se": 0.048
+    }
+  },
+  "deg": {
+    "Australian Grand Prix hard": {
+      "value": 0.0406,
+      "se": 0.0027
+    },
+    "Australian Grand Prix medium": {
+      "value": 0.0204,
+      "se": 0.0055
+    },
+    "Australian Grand Prix soft": {
+      "value": 0.069,
+      "se": 0.0079
+    },
+    "Austrian Grand Prix hard": {
+      "value": 0.0709,
+      "se": 0.0033
+    },
+    "Austrian Grand Prix medium": {
+      "value": 0.0747,
+      "se": 0.0042
+    },
+    "Austrian Grand Prix soft": {
+      "value": 0.0835,
+      "se": 0.0074
+    },
+    "Azerbaijan Grand Prix medium": {
+      "value": 0.0271,
+      "se": 0.0055
+    },
+    "Azerbaijan Grand Prix soft": {
+      "value": 0.0138,
+      "se": 0.0056
+    },
+    "Barcelona Grand Prix hard": {
+      "value": 0.0975,
+      "se": 0.0039
+    },
+    "Barcelona Grand Prix medium": {
+      "value": 0.1681,
+      "se": 0.0069
+    },
+    "Barcelona Grand Prix soft": {
+      "value": 0.1505,
+      "se": 0.0127
+    },
+    "British Grand Prix hard": {
+      "value": 0.048,
+      "se": 0.0048
+    },
+    "British Grand Prix medium": {
+      "value": 0.054,
+      "se": 0.0056
+    },
+    "British Grand Prix soft": {
+      "value": 0.1396,
+      "se": 0.0303
+    },
+    "Canadian Grand Prix hard": {
+      "value": 0.0064,
+      "se": 0.0051
+    },
+    "Canadian Grand Prix medium": {
+      "value": -0.0053,
+      "se": 0.0026
+    },
+    "Canadian Grand Prix soft": {
+      "value": -0.0066,
+      "se": 0.0032
+    },
+    "Chinese Grand Prix hard": {
+      "value": 0.0057,
+      "se": 0.0026
+    },
+    "Chinese Grand Prix medium": {
+      "value": 0.0712,
+      "se": 0.0089
+    },
+    "Chinese Grand Prix soft": {
+      "value": 0.0467,
+      "se": 0.027
+    },
+    "Dutch Grand Prix hard": {
+      "value": 0.0333,
+      "se": 0.0035
+    },
+    "Dutch Grand Prix medium": {
+      "value": 0.0705,
+      "se": 0.005
+    },
+    "Dutch Grand Prix soft": {
+      "value": 0.0617,
+      "se": 0.0045
+    },
+    "Hungarian Grand Prix hard": {
+      "value": 0.0596,
+      "se": 0.0031
+    },
+    "Hungarian Grand Prix medium": {
+      "value": 0.0617,
+      "se": 0.005
+    },
+    "Hungarian Grand Prix soft": {
+      "value": 0.0494,
+      "se": 0.0041
+    },
+    "Italian Grand Prix hard": {
+      "value": 0.0177,
+      "se": 0.003
+    },
+    "Italian Grand Prix medium": {
+      "value": 0.0209,
+      "se": 0.0034
+    },
+    "Italian Grand Prix soft": {
+      "value": 0.0399,
+      "se": 0.0096
+    },
+    "Japanese Grand Prix hard": {
+      "value": 0.0026,
+      "se": 0.0035
+    },
+    "Japanese Grand Prix medium": {
+      "value": 0.0371,
+      "se": 0.0065
+    },
+    "Miami Grand Prix hard": {
+      "value": 0.046,
+      "se": 0.0033
+    },
+    "Miami Grand Prix medium": {
+      "value": 0.0315,
+      "se": 0.0034
+    },
+    "Miami Grand Prix soft": {
+      "value": 0.0227,
+      "se": 0.0121
+    },
+    "Singapore Grand Prix medium": {
+      "value": 0.0601,
+      "se": 0.0036
+    },
+    "Singapore Grand Prix soft": {
+      "value": 0.0587,
+      "se": 0.003
+    },
+    "Spanish Grand Prix hard": {
+      "value": 0.0014,
+      "se": 0.0024
+    },
+    "Spanish Grand Prix medium": {
+      "value": 0.0612,
+      "se": 0.0099
+    },
+    "Spanish Grand Prix soft": {
+      "value": 0.0551,
+      "se": 0.0113
+    }
+  }
+}

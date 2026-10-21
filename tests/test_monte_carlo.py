@@ -6,8 +6,8 @@
 import numpy as np
 import pytest
 
-from monte_carlo import (calm_optimum, compound_label, generate_race_events, race_totals,
-                         run_simulation, simulate_race, summarize)
+from monte_carlo import (calm_optimum, compound_label, dnf_rate, generate_race_events, race_totals,
+                         run_simulation, simulate_race, sims_needed, summarize, win_share_margin)
 
 LAPS = 6
 GREEN = np.zeros(LAPS, dtype=int)
@@ -414,3 +414,34 @@ def test_summarize_raises_when_every_run_dnfs():
 
 def test_compound_label():
     assert compound_label(('soft', 'medium', 'hard')) == 'S → M → H'
+
+
+# simulation count and margins
+
+def test_dnf_rate_from_per_lap_chance():
+    # 1 - 0.998**60 = 1 - 0.88682
+    assert dnf_rate(0.002, 60) == pytest.approx(0.11318, abs=1e-5)
+    assert dnf_rate(0.0, 60) == 0.0
+
+
+@pytest.mark.parametrize('margin, dnf, expected', [
+    (0.03, 0.0, 1068),   # (1.96 / 0.03)**2 / 4 = 1067.1
+    (0.05, 0.0, 385),    # (1.96 / 0.05)**2 / 4 = 384.2
+    (0.03, 0.5, 2135),   # half the runs lost: 1067.1 / 0.5 = 2134.2
+])
+def test_sims_needed(margin, dnf, expected):
+    assert sims_needed(margin=margin, dnf=dnf) == expected
+
+
+def test_win_share_margin_even_split():
+    # Wilson half-width at p = 0.5, n = 1000: 1.96 * sqrt(0.00025 + 9.604e-7) / 1.0038416
+    assert win_share_margin(500, 1000) == pytest.approx(0.030931, abs=1e-5)
+
+
+def test_win_share_margin_stays_above_zero_when_one_side_wins_everything():
+    # plain p(1-p) would give 0; Wilson gives 1.96 * 0.00098 / 1.0038416
+    assert win_share_margin(1000, 1000) == pytest.approx(0.0019134, abs=1e-6)
+
+
+def test_win_share_margin_no_finished_races():
+    assert win_share_margin(0, 0) == 1.0

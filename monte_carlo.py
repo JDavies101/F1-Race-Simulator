@@ -305,6 +305,34 @@ def summarize(sim_results, total_laps):
     return s
 
 
+def dnf_rate(failure_prob, total_laps):
+    """Chance a car fails at some point in the race, from the per-lap chance."""
+    return 1 - (1 - failure_prob) ** total_laps
+
+
+def sims_needed(margin=0.03, dnf=0.0, z=1.96):
+    """
+    Simulations needed for the 1-stop vs 2-stop win share to be within
+    +-margin (95% confidence for z=1.96). Uses the worst case, an even split,
+    and adds enough extra runs to cover the ones lost to DNFs. The search
+    method doesn't change this, only how long each run takes.
+    """
+    finished = (z / margin) ** 2 * 0.25
+    return int(np.ceil(finished / (1 - dnf)))
+
+
+def win_share_margin(wins, finished, z=1.96):
+    """
+    +- on a win share of wins / finished at 95% confidence. Wilson interval,
+    so it stays sensible when one strategy wins almost every race.
+    """
+    if finished == 0:
+        return 1.0
+    p = wins / finished
+    return float(z / (1 + z ** 2 / finished)
+                 * np.sqrt(p * (1 - p) / finished + z ** 2 / (4 * finished ** 2)))
+
+
 def compound_label(comps):
     """('soft', 'medium') -> 'S → M'"""
     return ' → '.join(c[0].upper() for c in comps)
@@ -382,7 +410,7 @@ def main():
         'traffic_time_loss': 0.5,    # s per lap stuck in traffic
         'dirty_air_wear': 0.5,       # extra laps of tire wear per lap in traffic
 
-        'fuel_effect': 0.03,         # s per lap slower for each lap of fuel on board
+        'fuel_effect': 0.035,        # s per lap slower for each lap of fuel on board, fitted from 2026 races
         'fuel_wear': 0.3,            # extra tire wear on a full tank, fades to 0 by the end
 
         # offset is vs medium (negative = faster), deg is s per lap of tire age,
